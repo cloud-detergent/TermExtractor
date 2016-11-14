@@ -1,6 +1,8 @@
-import liblinearutil as svm
 import pickle
-from ITermExtractor.PartOfSpeech import POSNameConverter
+
+import liblinearutil as svm
+
+from ITermExtractor.Structures.PartOfSpeech import POSNameConverter
 
 
 class FeatureSpace:

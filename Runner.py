@@ -3,47 +3,52 @@
 Модуль содержит методы разделения текста на предложения, обработки текста, присвоения меток словам
 """
 
-from ITermExtractor.PartOfSpeech import POSNameConverter
-from ITermExtractor.pos import Tagger
 import re
+
+import ITermExtractor.Morph as m
+
+
+#from ITermExtractor.pos import Tagger
 
 
 def split_sentences(input_text: str) -> list:
+    # TODO учитывать списки с арабскими и римскими цифрами
     """
     Делит текст на предложения
 
     >>> split_sentences("Основная задача. Однако, в чем она заключается? Не в сиеминутном же восторге от бурной деятельности, воскликнет читатель! Да, это так.")
     ['Основная задача', 'Однако, в чем она заключается', 'Не в сиеминутном же восторге от бурной деятельности, воскликнет читатель', 'Да, это так']
+    >>> split_sentences('Основные определения данной предметной области: \\n 1. Терминологичность - мера, подсчитывающая степень, с которой термин относится к определенной предметной области \\n 2. Синтагматичность - мера, определяющая силы ассоциации слов в термине между собой')
+    ['Основные определения данной предметной области:', 'Терминологичность - мера, подсчитывающая степень, с которой термин относится к определенной предметной области', 'Синтагматичность - мера, определяющая силы ассоциации слов в термине между собой']
+    >>> split_sentences('Основные определения данной предметной области: \\n I. Терминологичность - мера, подсчитывающая степень, с которой термин относится к определенной предметной области \\n IV. Синтагматичность - мера, определяющая силы ассоциации слов в термине между собой')
+    ['Основные определения данной предметной области:', 'Терминологичность - мера, подсчитывающая степень, с которой термин относится к определенной предметной области', 'Синтагматичность - мера, определяющая силы ассоциации слов в термине между собой']
+
 
     :param input_text: текст, содержащий несколько предложений
     :return:
     """
-    sentence_end_symbols = '[.!?]'
-    sentences = re.split(sentence_end_symbols, input_text)
-    sentences.remove("")
-    for i in range(0, len(sentences)):
-        if sentences[i][0] == ' ':
-            sentences[i] = sentences[i][1:]
-
+    split_symbols = '[\dxvcmiXVCMI]{1,4}[.)]{1}\s|(?<=\w)+[.?!](\s|$)'  # Символы конца предложения + номера в списке
+    sentences = re.split(split_symbols, input_text)
+    sentences = [sentence.strip() for sentence in sentences if sentence is not None and sentence != '' and not str.isspace(sentence)]
     return sentences
 
 
-def tag_collocation(word_collocation: str, point="") -> list:
+def tag_collocation(word_collocation: str) -> list:
     """
     Обрабатывает словосочетание, присваивая каждому слову метку части речи
     :param word_collocation: словосочетание
-    :param point: костылик, требующийся для вызова из-под linguistic_filter
     :return: список слов с частями речи
     """
-    tagger = Tagger()
-    tagger.load(point + "tmp/svm.model", point + "tmp/ids.pickle") ## зависит от точки запуска
-
-    tagged = []
-    for word, label in tagger.label(word_collocation):
-        label = tagger.get_label(label)
-        #desc = POSNameConverter.get_corpus_def(label)
-        tagged.append((word, label))
+    tagged = m.tag_collocation(word_collocation)
     return tagged
+
+    #tagger = Tagger()
+    #tagger.load(point + "tmp/svm.model", point + "tmp/ids.pickle") ## зависит от точки запуска
+
+    #for word, label in tagger.label(word_collocation):
+    #    label = tagger.get_label(label)
+    #    #desc = POSNameConverter.get_corpus_def(label)
+    #    tagged.append((word, label))
 
 
 def parse_text(input_text: str) -> list:
