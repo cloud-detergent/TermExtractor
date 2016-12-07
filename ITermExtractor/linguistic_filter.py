@@ -1,8 +1,11 @@
 import math
-
-from ITermExtractor.Structures.PartOfSpeech import PartOfSpeech
 import helpers
 import ITermExtractor.Morph as m
+from ITermExtractor.Structures.PartOfSpeech import PartOfSpeech
+import logging
+from typing import Any, List
+from ITermExtractor.Morph import TaggedWord
+from ITermExtractor.stat.cvalue import collocation_tuple
 
 
 class LinguisticFilter(object):
@@ -14,7 +17,8 @@ class LinguisticFilter(object):
 
     _limit = 5; """Магическое значение максимальной длины термина, выраженной в количестве слов"""
 
-    def filter_text(self, sentences: list) -> dict:
+    # TODO redo type hints,
+    def filter_text(self, sentences: List[List[TaggedWord]]) -> List[collocation_tuple]:
         """
         Извлечение терминологических кандидатов из текста, разбитого на предложения
         :param sentences: предложения
@@ -24,11 +28,17 @@ class LinguisticFilter(object):
             raise TypeError('Необходим список предложений')
         if len(sentences) == 0:
             return []
+        total_count = len(sentences)
+        current_no = 0
+        logger = logging.getLogger()
+        logger.info("Фильтрация фильтром {0}".format(str(type(self))))
         for sentence in sentences:
             self.filter(sentence=sentence, append_mode=True)
+            current_no += 1
+            logger.debug("Обработано {0}/{1} предложение".format(current_no, total_count))
         return self._candidate_terms_
 
-    def filter(self, sentence: list, append_mode: bool = False) -> dict:
+    def filter(self, sentence: List[TaggedWord], append_mode: bool = False) -> List[collocation_tuple]:
         """
         Из входного предложения отсеивает терминологические кандидаты
         :param sentence: предложение/словосочетание, список из кортежей (слово, часть речи)
@@ -36,15 +46,15 @@ class LinguisticFilter(object):
         :return: словарь терминологических кандидатов с количеством встречаемости
 #  Основная задача его заключается в непосредственной поддержке стрелковых рот и сопровождении их огнем и движением
         >>> sent_info = m.tag_collocation('Минометный батальон (дивизион) является мощным огневым средством пехоты во всех видах ее боевой деятельности')
-        >>> sorted(nlf.filter(sent_info).items())
+        >>> sorted(nlf.filter(sent_info))
         [('боевой деятельности', 1), ('огневым средством', 1), ('огневым средством пехоты', 1), ('средством пехоты', 1)]
 
-        >>> sorted(alf.filter(sent_info).items())
+        >>> sorted(alf.filter(sent_info))
         [('Минометный батальон', 1), ('боевой деятельности', 1), ('всех видах', 1), ('мощным огневым', 1), ('мощным огневым средством', 1), ('мощным огневым средством пехоты', 1), ('огневым средством', 1), ('огневым средством пехоты', 1), ('средством пехоты', 1)]
         """
         # прогонять по списку токенов, по-элементно прогонять слова из предложения
         # TODO протестировать методы
-        if not isinstance(sentence, list) or False in [isinstance(word, m.TaggedWord) for word in sentence]:
+        if not isinstance(sentence, list) or False in [isinstance(word, TaggedWord) for word in sentence]:
             raise TypeError("Необходим список слов из предложения")
         for word in sentence:  # все некорректные слова выкидываем за борт
             if not helpers.is_correct_word(word.word):
@@ -54,31 +64,26 @@ class LinguisticFilter(object):
         max_wlimit = self.pattern.get_col_max_word_limit()
         max_wlimit = max_wlimit if max_wlimit <= self._limit else self._limit
         if not append_mode:
-            self._candidate_terms_ = {}
-        flag = False
+            self._candidate_terms_ = []
+        #len(sentence)
         # TODO ограничивать потолок количества слов кол-вом слов в предложении
-        for wcount in range(max_wlimit, min_wlimit - 1, -1):
-            # print("Ищем термины длиной в {0} слова".format(wcount))
-            for i in range(0, len(sentence) - wcount + 1):  # извлечение словосочетаний, длиной от 2 слов и более
-                candidate_term = sentence[i:i+wcount]
+        for word_count in range(max_wlimit, min_wlimit - 1, -1):
+            for i in range(0, len(sentence) - word_count + 1):  # извлечение словосочетаний, длиной от 2 слов и более
+                candidate_term = sentence[i:i+word_count]
                 candidate_term_collocation = ' '.join([word[0] for word in candidate_term])
-                #identical_element = -1
                 try:
-                    flag, identical_element = m.in_collocation_list(candidate_term_collocation, list(self._candidate_terms_.keys()))
+                    element_id = m.in_collocation_list(candidate_term, self._candidate_terms_)
+                    # TODO ввести в collocation_tuple лист с тегами
                 except ValueError as e:
-                    # print(e)  # TODO логирование
+                    logging.error("Ошибка при фильтрации предложения {0}".format(e))
                     continue
 
-                if flag:
-                    if identical_element is not None:
-                        if identical_element == candidate_term_collocation:
-                            self._candidate_terms_[candidate_term_collocation] += 1
-                        else:
-                            self._candidate_terms_[identical_element] += 1
+                if element_id is not None:
+                    self._candidate_terms_[element_id].freq += 1
                 else:
                     flag = self.match(candidate_term)
                     if flag:
-                        self._candidate_terms_[candidate_term_collocation] = 1
+                        self._candidate_terms_.append(collocation_tuple(collocation=candidate_term_collocation, wordcount=len(candidate_term), freq=1))
         return self._candidate_terms_
 
     def match(self, phrase):
@@ -90,7 +95,7 @@ class NounPlusLinguisticFilter(LinguisticFilter):
 
     def __init__(self):
         self.pattern = FilterPatternConjuction([FilterPatternToken(PartOfSpeech.noun, 2, math.inf)])
-        self._candidate_terms_ = {}
+        self._candidate_terms_ = []
 
 
 class AdjNounLinguisticFilter(LinguisticFilter):
@@ -98,7 +103,7 @@ class AdjNounLinguisticFilter(LinguisticFilter):
         token_1 = FilterPatternToken(PartOfSpeechStruct([PartOfSpeech.adjective, PartOfSpeech.noun], "|"), 1, math.inf)
         token_2 = FilterPatternToken(PartOfSpeech.noun, 1)
         self.pattern = FilterPatternConjuction([token_1, token_2])
-        self._candidate_terms_ = {}
+        self._candidate_terms_ = []
 
 
 class FilterPatternConjuction(object):
@@ -117,7 +122,7 @@ class FilterPatternConjuction(object):
         max_word_limit = sum(token.max_count for token in self.pattern)
         return max_word_limit
 
-    def match(self, phrase: list) -> bool:
+    def match(self, phrase: List[TaggedWord]) -> bool:
         # проверка с конца, как правило в шаблонах последний токен требует 1 вхождение
         # TODO обновить, переписать метод установления соответствия
         check_flag = False in [isinstance(element, m.TaggedWord) for element in phrase]
@@ -157,7 +162,7 @@ class FilterPatternToken(object):
         self.min_count = min_count
         self.max_count = max_count
 
-    def match(self, phrase: list) -> bool:
+    def match(self, phrase: List[TaggedWord]) -> bool:
         """
         Сравнивает соответствие частей речи в фразе
         :param phrase: словосочетание
