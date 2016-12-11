@@ -3,13 +3,16 @@ from collections import namedtuple
 from ITermExtractor.Structures.PartOfSpeech import PartOfSpeech, POSNameConverter
 from ITermExtractor.Structures.Case import Case, CaseNameConverter
 import helpers
+from typing import List, Tuple  # TODO PEP 484 & type checks
+import logging
 
-
+LENGTH_LIMIT_PER_PROCESS = 200
 __MorphAnalyzer__ = pymorphy2.MorphAnalyzer()
+# CollocationTuple = namedtuple('collocation', ['collocation', 'wordcount', 'freq'])
 TaggedWord = namedtuple('TaggedWord', ['word', 'pos', 'case', 'normalized'])
 
 
-def is_word_in_tuple_list(collocation: list, check_word: str) -> bool:
+def is_word_in_tuple_list(collocation: List[TaggedWord], check_word: str) -> bool:
     """
     осуществляет проверку наличия слова (check_word) в словосочетании
     checks if checked word is in collocation
@@ -20,7 +23,8 @@ def is_word_in_tuple_list(collocation: list, check_word: str) -> bool:
     >>> is_word_in_tuple_list([TaggedWord(word="огонь", pos=PartOfSpeech.noun, case=Case.nominative, normalized="огонь"), TaggedWord(word="артиллерии", pos=PartOfSpeech.noun, case=Case.genitive, normalized="артиллерия")], "артиллерией")
     True
     """
-    if not isinstance(collocation, list) or len(collocation) == 0 or False in [isinstance(word, TaggedWord) for word in collocation]:
+    if not isinstance(collocation, list) or len(collocation) == 0 or False in [isinstance(word, TaggedWord) for word in
+                                                                               collocation]:
         raise TypeError("Необходим список слов с тегами")
     if not isinstance(check_word, str) or check_word == "":
         raise TypeError("Необходимо слово для проверки")
@@ -33,11 +37,11 @@ def is_word_in_tuple_list(collocation: list, check_word: str) -> bool:
     return flag
 
 
-def is_identical_word(word1: str, word2: str) -> bool:
+def is_identical_word(word1: str or TaggedWord, word2: str or TaggedWord) -> bool:
     """
     Compares 2 words and returns true if these are the same word in different cases
-    :type word1: str
-    :type word2: str
+    :type word1: str or TaggedWord
+    :type word2: str or TaggedWord
     :param word1: word number 1
     :param word2: word number 2
     :return: if words are the same & differ from each other in cases
@@ -51,7 +55,7 @@ def is_identical_word(word1: str, word2: str) -> bool:
     >>> is_identical_word("в начале было", "в начале были")
     Traceback (most recent call last):
     ...
-    TypeError: Были переданы словосочетания
+    ValueError: Были переданы словосочетания
     >>> is_identical_word("парково-хозяйственный", "парково-хозяйственный")
     True
     >>> is_identical_word('', "огонь")
@@ -59,50 +63,54 @@ def is_identical_word(word1: str, word2: str) -> bool:
     >>> is_identical_word("Синий", "огонь артиллерии")
     Traceback (most recent call last):
     ...
-    TypeError: Были переданы словосочетания
+    ValueError: Были переданы словосочетания
     >>> is_identical_word("огонь артиллерии", "Синий")
     Traceback (most recent call last):
     ...
-    TypeError: Были переданы словосочетания
+    ValueError: Были переданы словосочетания
     >>> is_identical_word(1, "в начале были")
     Traceback (most recent call last):
     ...
-    TypeError: Требуется два строковых аргумента
+    TypeError: Требуется два строковых или TaggedWord аргумента
     >>> is_identical_word("123123", "в начале были")
     Traceback (most recent call last):
     ...
-    TypeError: Были переданы словосочетания
+    ValueError: Были переданы словосочетания
     >>> is_identical_word("артиллерия", "sda123123")
     Traceback (most recent call last):
     ...
-    TypeError: Недопустимое значение аргументов. Необходимы символьные строки
+    ValueError: Недопустимое значение аргументов. Необходимы символьные строки
     """
-    if not(isinstance(word1, str) and isinstance(word2, str)):
-        raise TypeError("Требуется два строковых аргумента")
-    if word1 == "" or word2 == "":
-        return False
-    if len(word1.split(' ')) > 1 or len(word2.split(' ')) > 1:
-        raise TypeError("Были переданы словосочетания")
-    if not (helpers.is_correct_word(word1) and helpers.is_correct_word(word2)):
-        raise TypeError("Недопустимое значение аргументов. Необходимы символьные строки")
+    is_tagged_words = isinstance(word1, TaggedWord) and isinstance(word2, TaggedWord)
+    is_strs = isinstance(word1, str) and isinstance(word2, str)
+    if not (is_strs or is_tagged_words):
+        raise TypeError("Требуется два строковых или TaggedWord аргумента")
+    if is_strs:
+        if word1 == "" or word2 == "":
+            return False
+        if word1.count(' ') >= 1 or word2.count(' ') >= 1:
+            raise ValueError("Были переданы словосочетания")
+        if not (helpers.is_correct_word(word1) and helpers.is_correct_word(word2)):
+            raise ValueError("Недопустимое значение аргументов. Необходимы символьные строки")
+        word1 = word1.lower()
+        word2 = word2.lower()
 
-    word1 = word1.lower()
-    word2 = word2.lower()
     result = word1 == word2
     if not result:
-        # TODO у каждого слова уже должны быть тэги к моменту вызова этих строк
-        # TODO вызывать этот метод после всех манипуляций с извлечением терминов
-        word1_parse_info = tag_collocation(word1)[0]
-        word2_parse_info = tag_collocation(word2)[0]
-        result = word1_parse_info.normalized == word2_parse_info.normalized
+        if is_strs:
+            word1_parse_info = tag_collocation(word1)[0]
+            word2_parse_info = tag_collocation(word2)[0]
+            result = word1_parse_info.normalized == word2_parse_info.normalized
+        else:
+            result = word1.normalized == word2.normalized
     return result
 
 
-def get_main_word(collocation: list) -> str:
+def get_main_word(collocation: List[TaggedWord]) -> str:
     """
     Получает главное слово в словосочетании
     :param collocation: словосочетание с тегами
-    :return:
+    :return: главное слово в словосочетании, строка
 
     >>> get_main_word([TaggedWord(word="огня", pos=PartOfSpeech.noun, case=Case.genitive, normalized="огонь"), TaggedWord(word="артиллерии", pos=PartOfSpeech.noun, case=Case.genitive, normalized="артиллерия")])
     'огня'
@@ -116,12 +124,13 @@ def get_main_word(collocation: list) -> str:
     ValueError: Словосочетания с глаголами и наречиями не поддерживаются
     """
     # TODO удаление whitespace'ов
-    if not isinstance(collocation, list) or len(collocation) == 0 or False in [isinstance(word, TaggedWord) for word in collocation]:
+    if not isinstance(collocation, list) or len(collocation) == 0 or False in [isinstance(word, TaggedWord) for word in
+                                                                               collocation]:
         raise TypeError("Необходим список слов с тегами")
 
     pos = [word.pos for word in collocation]
     # TODO пока отрабатывать лишь словосочетания сущ+сущ и прил+сущ
-    flag = not(PartOfSpeech.verb in pos and PartOfSpeech.adverb in pos)
+    flag = not (PartOfSpeech.verb in pos and PartOfSpeech.adverb in pos)
     if not flag:
         raise ValueError("Словосочетания с глаголами и наречиями не поддерживаются")
 
@@ -146,6 +155,7 @@ def get_main_word(collocation: list) -> str:
     # получаем список частей речи в словосоч. Если одно сущ, остальные прилагательные
     # если сущ+сущ, то или в  и.п., или первое
 
+
 # TODO при обнаружении в тексте 2х терминов в разных падежах - приводить к одному
 # определение из 2, Какое из них в именительном падеже
 
@@ -162,15 +172,15 @@ def is_identical_collocation(collocation1: str, collocation2: str) -> bool:
     >>> is_identical_collocation('', '')
     Traceback (most recent call last):
     ...
-    TypeError: Необходимы словосочетания
+    ValueError: Необходимы словосочетания
     >>> is_identical_collocation('plešemo', 'mi plešemo')
     Traceback (most recent call last):
     ...
-    TypeError: Необходимы словосочетания
+    ValueError: Необходимы словосочетания
     >>> is_identical_collocation('mi plešemo', 'plešemo')
     Traceback (most recent call last):
     ...
-    TypeError: Необходимы словосочетания
+    ValueError: Необходимы словосочетания
     >>> is_identical_collocation('парково-хозяйственный день', 'парково-хозяйственный 6 день')
     Traceback (most recent call last):
     ...
@@ -183,12 +193,12 @@ def is_identical_collocation(collocation1: str, collocation2: str) -> bool:
     False
     """
 
-    if not(isinstance(collocation1, str) and isinstance(collocation2, str)):
+    if not (isinstance(collocation1, str) and isinstance(collocation2, str)):
         raise TypeError("Ошибка типов. Необходимы строки")
     words_coll1 = collocation1.split()
     words_coll2 = collocation2.split()
     if len(words_coll1) <= 1 or len(words_coll2) <= 1:
-        raise TypeError("Необходимы словосочетания")
+        raise ValueError("Необходимы словосочетания")
     val_check = [helpers.is_correct_word(word) for word in words_coll1 + words_coll2]
     if False in val_check:
         raise ValueError("Слова в словосочетаниях должны состоять из букв")
@@ -215,25 +225,90 @@ def is_identical_collocation(collocation1: str, collocation2: str) -> bool:
     return is_identical
 
 
-def in_collocation_list(collocation: str, collocation_list: list) -> (bool, str):
+def is_identical_collocation_q(collocation1: List[TaggedWord], collocation2: List[TaggedWord]) -> bool:
+    """
+    Ускоренная и упрощенная версия is_identical_collocation()
+    :param collocation1: словосочетание с тегами
+    :param collocation2: словосочетание с тегами
+    :return: bool value
+    """
+
+    if not (isinstance(collocation1, list) and isinstance(collocation2, list)):  # List[TaggedWord]
+        raise TypeError("Ошибка типов. Необходимы словосочетания упакованные в List[TaggedWord]")
+    if len(collocation1) <= 1 or len(collocation2) <= 1:
+        raise ValueError("Необходимы словосочетания")
+
+    if collocation1 == collocation2:
+        return True
+    if len(collocation1) != len(collocation2):
+        return False
+
+    main_word_1 = get_main_word(collocation1)
+    main_word_2 = get_main_word(collocation2)
+
+    comparison_result = False
+    try:
+        comparison_result = is_identical_word(main_word_1, main_word_2)
+    except ValueError as e:
+        logging.error("Проверка двух слов ('{0}' и '{1}') завершилась ошибкой\n{2}"
+                      .format(main_word_1, main_word_2, e))
+    if not comparison_result:
+        return False
+    is_identical = True
+    for i in range(0, len(collocation1)):
+        is_identical = is_identical and collocation1[i].normalized == collocation2[i].normalized
+        if not is_identical:
+            break
+
+    return is_identical
+
+
+def binary_identity_check(collocation: List[TaggedWord], collocation_list: List[Tuple[int, List[TaggedWord]]]) -> List[Tuple[int, bool]]:  # индекс, True/False
+    """
+    Проверяет наличие словосочетания в списке бинарным поиском
+    :param collocation: словосочетание
+    :param collocation_list: список словосочетаний с индексами
+    :return: результирующий список (индекс, найдено/не найдено)
+
+    >>> collocation_info = [tag_collocation(i) for i in ['огонь артиллерии', 'вызов огня артиллерии', 'огня артиллерии большой мощности', 'огня артиллерии']]
+    >>> binary_identity_check(collocation_info[0], list(enumerate(collocation_info)))
+    [(0, True), (1, False), (2, False), (3, True)]
+    """
+    if len(collocation_list) == 1:
+        tmp = collocation_list[0]
+        return [(tmp[0], is_identical_collocation_q(collocation, tmp[1]))]
+    else:
+        middle_index = int(len(collocation_list) / 2)
+        first_half = collocation_list[:middle_index]
+        second_half = collocation_list[middle_index:]
+        first_result = binary_identity_check(collocation, first_half)
+        second_result = binary_identity_check(collocation, second_half)
+        result = [] + first_result + second_result
+        return result
+        #LENGTH_LIMIT_PER_PROCESS
+    # [(is_identical_collocation_q(collocation, coll[1]), coll[0], coll[1]) for coll in enumerate(collocation_list)]
+
+
+def in_collocation_list_var(collocation: str, collocation_list: List[str]) -> Tuple[bool, str]:
     # TODO мб возвращать термин в нормальной форме, если попадается в collocation? mainword в и.п.
+    # TODO overcomplicated
     """
     Осуществляет проверку наличия словосочетания с списке, учитывая падеж
     :param collocation: словосочетание
     :param collocation_list: список словосочетаний
     :return: да/нет + идентичный элемент
 
-    >>> in_collocation_list('огонь артиллерии', ['основная задача', 'стрелкового оружия', 'огня артиллерии'])
+    >>> in_collocation_list_var('огонь артиллерии', ['основная задача', 'стрелкового оружия', 'огня артиллерии'])
     (True, 'огня артиллерии')
-    >>> in_collocation_list('огонь артиллерии', ['основная задача', 'стрелкового оружия', 'артиллерийская подготовка'])
+    >>> in_collocation_list_var('огонь артиллерии', ['основная задача', 'стрелкового оружия', 'артиллерийская подготовка'])
     (False, None)
-    >>> in_collocation_list('', ['основная задача', 'стрелкового оружия', 'огня артиллерии'])
+    >>> in_collocation_list_var('', ['основная задача', 'стрелкового оружия', 'огня артиллерии'])
     Traceback (most recent call last):
     ...
-    ValueError: Необходимо словосочетание для проверки
-    >>> in_collocation_list('огонь артиллерии', [])
+    ValueError: Необходимы словосочетания
+    >>> in_collocation_list_var('огонь артиллерии', [])
     (False, None)
-    >>> in_collocation_list('и дивизионов', ['командующий войсками армии', 'стрелковых дивизий минометных дивизионов', 'минометных дивизионов',  'боевому применению'])
+    >>> in_collocation_list_var('и дивизионов', ['командующий войсками армии', 'стрелковых дивизий минометных дивизионов', 'минометных дивизионов',  'боевому применению'])
     (False, None)
     """
 
@@ -243,14 +318,13 @@ def in_collocation_list(collocation: str, collocation_list: list) -> (bool, str)
         raise TypeError("Ошибка типов. Необходим список словосочетаний")
 
     words_coll = collocation.split()
-    if len(words_coll) <= 1:
-        raise ValueError("Необходимо словосочетание для проверки")
     if len(collocation_list) == 0:
         return False, None
 
     val_check = [helpers.is_correct_word(word) for word in words_coll]
-    val_check_coll = [isinstance(coll, str) and False not in [helpers.is_correct_word(coll_word) for coll_word in coll.split()]
-                      for coll in collocation_list]
+    val_check_coll = [
+        isinstance(coll, str) and False not in [helpers.is_correct_word(coll_word) for coll_word in coll.split()]
+        for coll in collocation_list]
     if False in val_check or False in val_check_coll:
         raise ValueError("Слова в словосочетаниях должны состоять из букв")
 
@@ -265,7 +339,31 @@ def in_collocation_list(collocation: str, collocation_list: list) -> (bool, str)
     return flag, collocation_list[found_index] if found_index > -1 else None
 
 
-def tag_collocation(collocation: str) -> list:
+def count_includes(collocation: List[TaggedWord], collocation_list: List[List[TaggedWord]]) -> List[Tuple[int, List[TaggedWord]]]:
+    """
+    Осуществляет проверку наличия словосочетания с списке, учитывая падеж
+    :param collocation: словосочетание
+    :param collocation_list: список словосочетаний
+    :return: информацию о включениях (индекс, Слово)
+
+    >>> collocation_info = [tag_collocation(i) for i in ['огонь артиллерии', 'вызов огня артиллерии', 'огня артиллерии большой мощности', 'огня артиллерии']]
+    >>> count_includes(collocation_info[0], collocation_info)  # doctest: +ELLIPSIS
+    [(0, [TaggedWord(word='огонь', ...), TaggedWord(word='артиллерии', ...)]), (3, [TaggedWord(word='огня', ...), TaggedWord(word='артиллерии', ...)])]
+    """
+    # TODO more examples @doctest
+    if not isinstance(collocation, list):  # TODO как провернуть эту проверку типов List[TaggedWord]?
+        raise TypeError("Ошибка типов. Необходимо словосочетание")
+    if not isinstance(collocation_list, list):
+        raise TypeError("Ошибка типов. Необходим список словосочетаний")
+
+    # flag = collocation in collocation_list
+    # identity_check = [(is_identical_collocation_q(collocation, coll[1]), coll[0], coll[1]) for coll in enumerate(collocation_list)]  # True/False, index, collocation
+    identity_check = binary_identity_check(collocation, list(enumerate(collocation_list)))
+    found_matches = [(id_tuple[0], collocation_list[id_tuple[0]]) for id_tuple in identity_check if id_tuple[1]]
+    return found_matches
+
+
+def tag_collocation(collocation: str) -> List[TaggedWord]:
     """
     Присваивает каждому слову в словосочетании метки части речи и падежа
     :param collocation: словосочетание
@@ -281,7 +379,7 @@ def tag_collocation(collocation: str) -> list:
     [TaggedWord(word='слушать', pos=<PartOfSpeech.verb: (2, 'V глагол (пользоваться, обрабатывать)')>, case=<Case.none: (0,)>, normalized='слушать'), TaggedWord(word='громко', pos=<PartOfSpeech.adverb: (4, 'ADV наречие (сгоряча, очень)')>, case=<Case.none: (0,)>, normalized='громко')]
     """
     words = collocation.split()
-    tagged_words = [] # боевая деятельность и все проявления
+    tagged_words = []  # боевая деятельность и все проявления
     for word in words:
         parse_info = __MorphAnalyzer__.parse(word)[0]
         pos = POSNameConverter.to_enum(str(parse_info.tag.POS))
@@ -291,4 +389,22 @@ def tag_collocation(collocation: str) -> list:
 
     return tagged_words
 
+
 # TODO на некоторые слова pymorphy дает несколько вариантов с одинаковыми вероятностями, метод определения?
+
+
+def get_collocation_normal_form(collocations: List[List[TaggedWord]]) -> int:
+    index = -1
+    for i in range(len(collocations)):
+        main_word = get_main_word(collocations[i])
+        main_word_tagged_l = [word for word in collocations[i] if word.word == main_word]
+        main_word_tagged = main_word_tagged_l[0] if len(main_word_tagged_l) > 0 else None
+        if main_word_tagged is not None and (main_word_tagged.case == Case.nominative or main_word_tagged.word == main_word_tagged.normalized):
+            index = i
+            break
+    return index
+
+
+# def get_normal_form(collocation: List[])
+# TODO метод получения нормальной формы
+# прил+сущ

@@ -2,10 +2,16 @@ import math
 import helpers
 import ITermExtractor.Morph as m
 from ITermExtractor.Structures.PartOfSpeech import PartOfSpeech
-import logging
-from typing import Any, List
+from typing import List, Dict
 from ITermExtractor.Morph import TaggedWord
-from ITermExtractor.stat.cvalue import collocation_tuple
+from operator import itemgetter
+from ITermExtractor.stat.cvalue import collocation
+import multiprocessing
+import logging
+
+LIMIT_PER_PROCESS = 80
+# collocation = namedtuple('collocation', ['collocation', 'wordcount', 'freq'])
+# TODO общие структуры вынести в отдельный модуль
 
 
 class LinguisticFilter(object):
@@ -17,11 +23,11 @@ class LinguisticFilter(object):
 
     _limit = 5; """Магическое значение максимальной длины термина, выраженной в количестве слов"""
 
-    # TODO redo type hints,
-    def filter_text(self, sentences: List[List[TaggedWord]]) -> List[collocation_tuple]:
+    def filter_text(self, sentences: List[List[TaggedWord]], is_single_threaded: bool = False) -> List[collocation]:
         """
         Извлечение терминологических кандидатов из текста, разбитого на предложения
         :param sentences: предложения
+        :param is_single_threaded: флаг, True - выполнять в одном потоке
         :return: словарь терминологических кандидатов с количеством встречаемости
         """
         if not isinstance(sentences, list):
@@ -29,16 +35,33 @@ class LinguisticFilter(object):
         if len(sentences) == 0:
             return []
         total_count = len(sentences)
-        current_no = 0
+        # current_no = 0
         logger = logging.getLogger()
         logger.info("Фильтрация фильтром {0}".format(str(type(self))))
+        logger.info("Всего предложений {0}".format(total_count))
         for sentence in sentences:
             self.filter(sentence=sentence, append_mode=True)
-            current_no += 1
-            logger.debug("Обработано {0}/{1} предложение".format(current_no, total_count))
-        return self._candidate_terms_
+            # current_no += 1
+            # logger.debug("Обработано {0}/{1} предложение".format(current_no, total_count))
+        logger.info("Предложения обработаны, переходим к соединению одинаковых ключей")
+        logger.warning("Заглушка")
 
-    def filter(self, sentence: List[TaggedWord], append_mode: bool = False) -> List[collocation_tuple]:
+        # Get the list of all word tags from all sentences
+
+        word_list = [(word.word, word) for sentence in sentences for word in sentence]
+        corrected_candidate_terms = parallel_conjugation(dict(word_list), self._candidate_terms_, is_single_threaded)
+        logger.info("Перечень терминологических кандидатов построен (всего {1}/{0})".format(len(self._candidate_terms_), len(corrected_candidate_terms)))
+        logger.info("Сортировка результата по частоте")
+        corrected_candidate_terms = LinguisticFilter.sort_by_wordcount(corrected_candidate_terms)
+        logger.info("Список отсортирован")
+        return corrected_candidate_terms
+
+    @staticmethod
+    def sort_by_wordcount(input_list: List[collocation]) -> List[collocation]:
+        result = sorted(input_list, key=itemgetter(1), reverse=True)
+        return result
+
+    def filter(self, sentence: List[TaggedWord], append_mode: bool = False) -> List[collocation]:
         """
         Из входного предложения отсеивает терминологические кандидаты
         :param sentence: предложение/словосочетание, список из кортежей (слово, часть речи)
@@ -54,6 +77,7 @@ class LinguisticFilter(object):
         """
         # прогонять по списку токенов, по-элементно прогонять слова из предложения
         # TODO протестировать методы
+        logger = logging.getLogger()
         if not isinstance(sentence, list) or False in [isinstance(word, TaggedWord) for word in sentence]:
             raise TypeError("Необходим список слов из предложения")
         for word in sentence:  # все некорректные слова выкидываем за борт
@@ -65,25 +89,26 @@ class LinguisticFilter(object):
         max_wlimit = max_wlimit if max_wlimit <= self._limit else self._limit
         if not append_mode:
             self._candidate_terms_ = []
-        #len(sentence)
         # TODO ограничивать потолок количества слов кол-вом слов в предложении
         for word_count in range(max_wlimit, min_wlimit - 1, -1):
             for i in range(0, len(sentence) - word_count + 1):  # извлечение словосочетаний, длиной от 2 слов и более
                 candidate_term = sentence[i:i+word_count]
                 candidate_term_collocation = ' '.join([word[0] for word in candidate_term])
-                try:
-                    element_id = m.in_collocation_list(candidate_term, self._candidate_terms_)
-                    # TODO ввести в collocation_tuple лист с тегами
-                except ValueError as e:
-                    logging.error("Ошибка при фильтрации предложения {0}".format(e))
-                    continue
 
-                if element_id is not None:
-                    self._candidate_terms_[element_id].freq += 1
+                already_existing_indices = [i for i, term in enumerate(self._candidate_terms_)
+                            if term.collocation.lower() == candidate_term_collocation.lower()]
+                is_appended = len(already_existing_indices) >= 1
+                if is_appended:
+                    index = already_existing_indices[0]
+                    tmp = self._candidate_terms_[index][:2] + (self._candidate_terms_[index].freq + 1,)
+                    self._candidate_terms_[index] = collocation(*tmp)
                 else:
                     flag = self.match(candidate_term)
                     if flag:
-                        self._candidate_terms_.append(collocation_tuple(collocation=candidate_term_collocation, wordcount=len(candidate_term), freq=1))
+                        self._candidate_terms_.append(collocation(
+                                        collocation=candidate_term_collocation,
+                                        wordcount=len(candidate_term),
+                                        freq=1))
         return self._candidate_terms_
 
     def match(self, phrase):
@@ -132,7 +157,7 @@ class FilterPatternConjuction(object):
         flag = False
         if not self.__iscomplex__:
             flag = self.pattern[0].match(phrase)
-        elif len(self.pattern) == 2: # костылеподобно
+        elif len(self.pattern) == 2:  # костылеподобно
             flag |= self.pattern[1].match([phrase[-1]])
             flag &= self.pattern[0].match(phrase[0: len(phrase) - 1])
         return flag
@@ -170,17 +195,17 @@ class FilterPatternToken(object):
         """
 
         check_list = [isinstance(word, m.TaggedWord) for word in phrase]
-        #var1 = [not p for p in check_list]
         if False in check_list:
             raise ValueError("Необходим список слов, упакованных в кортежи TaggedWord")
-        count_flag = self.min_count <= len(phrase) <= self.max_count
+        word_length = len([True for word in phrase if len(word) > 1])
+        count_flag = self.min_count <= word_length <= self.max_count  # len(phrase)
         pos_flag = True
 
         pos_check_list = [self.POS.match(word.pos) for word in phrase]
         for check_list in pos_check_list:
             pos_flag &= check_list
 
-        return pos_flag & count_flag#, pos_check_list
+        return pos_flag & count_flag  # , pos_check_list
 
 
 class PartOfSpeechStruct:
@@ -247,3 +272,85 @@ if __name__ == "__main__":
         result2 = filter2.match(phrase)
         print("Фраза {0} {1} и {2}".format(phrase, "соответствует" if result1 else "не подходит", "соответствует" if result2 else "не подходит"))
     '''
+
+
+def parallel_conjugation(word_dict: Dict[str, TaggedWord], candidate_list: List[collocation],
+                         is_single_threaded: bool = False) -> List[collocation]:
+    logging.info("Разделяем на потоки")
+    spliced_candidate_list = split_tasks(candidate_list)
+    args = list(zip([word_dict for i in range(len(spliced_candidate_list))], spliced_candidate_list))
+    if not is_single_threaded:
+        logging.debug("Разделили аргументы по задачам ({0})".format(len(args)))
+        with multiprocessing.Pool(processes=len(args)) as pool:
+            result = pool.starmap(conjugate, args)
+        grouped_result = [element for line in result for element in line]
+    else:
+        grouped_result = []
+        for arg in args:
+            grouped_result += conjugate(arg[0], arg[1])
+    logging.debug("Готовы результаты обработки")
+    return grouped_result
+
+# TODO adj\noun фильтр, collocation вперемешку с TaggedWord, как?
+
+
+def conjugate(word_dict: Dict[str, TaggedWord], candidates_list: List[collocation]) -> List[collocation]:
+    """
+    Сопоставляет одни и те же словосочетания в разных словоформах и суммирует в итоговом списке терминологических кандидатов их частоты встречаемости
+    :param word_dict: словарь размеченных слов, встреченных в заданном тексте
+    :param candidates_list: список терминологических кандидатов
+    :return: словарь терминологических кандидатов
+    """
+    # TODO соединять ключи словаря, отличающиеся друг от друга склонением и
+    # TODO регистром !!!
+    # TODO желательно приводить в норм форму
+    # todo отсеивать словосочетания со словом в 1 букву
+
+    joined_form_list = []
+    local_sorted_key_list = [([word_dict[word] for word in term.collocation.split(" ")])
+                             for term in candidates_list]
+
+    for key_tag in local_sorted_key_list:
+        element_matches = m.count_includes(key_tag, local_sorted_key_list)  # TODO узкое, медленное место
+        if len(element_matches) == 1:
+            match_index = element_matches[0][0]
+            joined_form_list.append(candidates_list[match_index])
+        else:
+            normal_form_local_index = m.get_collocation_normal_form([element[1] for element in element_matches])
+            if normal_form_local_index != -1:
+                base_index = element_matches[normal_form_local_index][0]
+            else:
+                base_index = element_matches[0][0]
+
+            base_key = local_sorted_key_list[base_index]
+            if base_key not in joined_form_list:
+                remaining_keys = [element[0] for element in element_matches
+                                  if element[0] != base_index]
+                # remaining_keys = [local_sorted_key_list[element[0]][0] for element in element_matches
+                #                  if element[0] != base_index]
+                col = ' '.join([key.word for key in base_key])
+                summary_freq = sum(candidates_list[key].freq for key in remaining_keys)
+                wordcount = len(key_tag)
+                joined_form_list.append(collocation(collocation=col, wordcount=wordcount, freq=summary_freq))
+
+        for i, lst in reversed(element_matches):
+            del local_sorted_key_list[i]
+    return joined_form_list
+
+
+def split_tasks(task_list: List[collocation]):
+    """
+    Разделяет список на несколько для равномерного разделения процессов на параллельные потоки
+    :param task_list: входной список
+    :return: разделенный список
+    """
+    sorted_list = sorted(task_list, key=itemgetter(1, 0))
+    length = len(sorted_list)
+    threads = 1
+    if length > LIMIT_PER_PROCESS:
+        threads = int(length / 80) + 1
+    if threads == 1:
+        split_list = [sorted_list]
+    else:
+        split_list = [sorted_list[LIMIT_PER_PROCESS * i:LIMIT_PER_PROCESS * (i + 1)] for i in range(threads)]
+    return split_list
