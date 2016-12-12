@@ -1,11 +1,3 @@
-import logging
-
-
-def append_to_log():
-    # TODO ввести логирование прогресса выполнениея процесса извлечения терминов с процентами
-    logging.info('')
-
-
 def remove_spans(term: str, spans: list) -> str:
     """
     Удаляет из строки слова, включенные в стоп-список

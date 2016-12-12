@@ -3,14 +3,12 @@ import helpers
 import ITermExtractor.Morph as m
 from ITermExtractor.Structures.PartOfSpeech import PartOfSpeech
 from typing import List, Dict
-from ITermExtractor.Morph import TaggedWord
 from operator import itemgetter
-from ITermExtractor.stat.cvalue import collocation
+from ITermExtractor.Structures.WordStructures import collocation, TaggedWord
 import multiprocessing
 import logging
 
 LIMIT_PER_PROCESS = 80
-# collocation = namedtuple('collocation', ['collocation', 'wordcount', 'freq'])
 # TODO общие структуры вынести в отдельный модуль
 
 
@@ -35,14 +33,11 @@ class LinguisticFilter(object):
         if len(sentences) == 0:
             return []
         total_count = len(sentences)
-        # current_no = 0
         logger = logging.getLogger()
         logger.info("Фильтрация фильтром {0}".format(str(type(self))))
         logger.info("Всего предложений {0}".format(total_count))
         for sentence in sentences:
             self.filter(sentence=sentence, append_mode=True)
-            # current_no += 1
-            # logger.debug("Обработано {0}/{1} предложение".format(current_no, total_count))
         logger.info("Предложения обработаны, переходим к соединению одинаковых ключей")
         logger.warning("Заглушка")
 
@@ -76,8 +71,6 @@ class LinguisticFilter(object):
         [('Минометный батальон', 1), ('боевой деятельности', 1), ('всех видах', 1), ('мощным огневым', 1), ('мощным огневым средством', 1), ('мощным огневым средством пехоты', 1), ('огневым средством', 1), ('огневым средством пехоты', 1), ('средством пехоты', 1)]
         """
         # прогонять по списку токенов, по-элементно прогонять слова из предложения
-        # TODO протестировать методы
-        logger = logging.getLogger()
         if not isinstance(sentence, list) or False in [isinstance(word, TaggedWord) for word in sentence]:
             raise TypeError("Необходим список слов из предложения")
         for word in sentence:  # все некорректные слова выкидываем за борт
@@ -89,7 +82,6 @@ class LinguisticFilter(object):
         max_wlimit = max_wlimit if max_wlimit <= self._limit else self._limit
         if not append_mode:
             self._candidate_terms_ = []
-        # TODO ограничивать потолок количества слов кол-вом слов в предложении
         for word_count in range(max_wlimit, min_wlimit - 1, -1):
             for i in range(0, len(sentence) - word_count + 1):  # извлечение словосочетаний, длиной от 2 слов и более
                 candidate_term = sentence[i:i+word_count]
@@ -126,6 +118,15 @@ class NounPlusLinguisticFilter(LinguisticFilter):
 class AdjNounLinguisticFilter(LinguisticFilter):
     def __init__(self):
         token_1 = FilterPatternToken(PartOfSpeechStruct([PartOfSpeech.adjective, PartOfSpeech.noun], "|"), 1, math.inf)
+        token_2 = FilterPatternToken(PartOfSpeech.noun, 1)
+        self.pattern = FilterPatternConjuction([token_1, token_2])
+        self._candidate_terms_ = []
+
+
+class AdjNounReducedLinguisticFilter(LinguisticFilter):
+    """Модифицированный вариант фильтра Adj|Noun для метода k-factor"""
+    def __init__(self):
+        token_1 = FilterPatternToken(PartOfSpeechStruct([PartOfSpeech.adjective, PartOfSpeech.noun], "|"), 1, 1)
         token_2 = FilterPatternToken(PartOfSpeech.noun, 1)
         self.pattern = FilterPatternConjuction([token_1, token_2])
         self._candidate_terms_ = []
@@ -311,7 +312,7 @@ def conjugate(word_dict: Dict[str, TaggedWord], candidates_list: List[collocatio
                              for term in candidates_list]
 
     for key_tag in local_sorted_key_list:
-        element_matches = m.count_includes(key_tag, local_sorted_key_list)  # TODO узкое, медленное место
+        element_matches = m.count_includes(key_tag, local_sorted_key_list)
         if len(element_matches) == 1:
             match_index = element_matches[0][0]
             joined_form_list.append(candidates_list[match_index])
@@ -326,8 +327,6 @@ def conjugate(word_dict: Dict[str, TaggedWord], candidates_list: List[collocatio
             if base_key not in joined_form_list:
                 remaining_keys = [element[0] for element in element_matches
                                   if element[0] != base_index]
-                # remaining_keys = [local_sorted_key_list[element[0]][0] for element in element_matches
-                #                  if element[0] != base_index]
                 col = ' '.join([key.word for key in base_key])
                 summary_freq = sum(candidates_list[key].freq for key in remaining_keys)
                 wordcount = len(key_tag)

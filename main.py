@@ -1,10 +1,10 @@
-from ITermExtractor.linguistic_filter import (NounPlusLinguisticFilter, AdjNounLinguisticFilter, LinguisticFilter)
+from ITermExtractor.linguistic_filter import (NounPlusLinguisticFilter, AdjNounLinguisticFilter, AdjNounReducedLinguisticFilter)
 from ITermExtractor.linguistic_filter import collocation
 from ITermExtractor.stoplist import StopList
 from TextImporter import (DefaultTextImporter, PlainTextImporter)
 from typing import List
 from operator import itemgetter
-from ITermExtractor.Morph import TaggedWord
+from ITermExtractor.Structures.WordStructures import TaggedWord
 import sys
 import Runner
 import datetime
@@ -12,6 +12,7 @@ import os
 import logger_settings
 import logging
 import ITermExtractor.stat.cvalue as cvalue
+import ITermExtractor.stat.kfactor as kfactor
 import pickle
 
 
@@ -48,13 +49,27 @@ def open_tag_data(filename: str) -> List[TaggedWord]:
         logger.warning("Файл с размеченными словами пуст")
     return data
 
+__time_stamps__ = []
+
+
+def track_time(desc: str = ""):
+    __time_stamps__.append((desc, datetime.datetime.now()))
+
+
+def difference(desc: str = ""):
+    stamps = [stamp[1] for stamp in __time_stamps__ if stamp[0] == desc]
+    if len(stamps) >= 2:
+        diffs = [str(stamps[i+1] - stamps[i]) for i in range(len(stamps) - 1)]
+    else:
+        diffs = []
+    return diffs
 
 if __name__ == "__main__":
     logger_settings.setup()
     logger = logging.getLogger()
     logger.info("\n============================================Запуск==============================================\n")
 
-    start_time = datetime.datetime.now()
+    track_time()
     force_test_file_usage = True
     use_pseudo_text_fetcher = len(sys.argv) != 2
     save_tagdata_to_log = True
@@ -87,15 +102,21 @@ if __name__ == "__main__":
     logger.debug("Начало извлечения списка терминов")
     filter1 = NounPlusLinguisticFilter()
     filter2 = AdjNounLinguisticFilter()
+    # filter3 = AdjNounReducedLinguisticFilter()
 
     logger.info("Фильтр 1: Начало")
     terms1 = filter1.filter_text(tagged_sentence_list)
+    # terms1 = []
     logger.info("Фильтр 1: список терминов извлечен")
 
     logger.info("Фильтр 2: Начало")
     terms2 = filter2.filter_text(tagged_sentence_list)
     logger.info("Фильтр 2: список терминов извлечен")
-
+    """
+    logger.info("Фильтр 3: Начало")
+    terms3 = filter3.filter_text(tagged_sentence_list)
+    logger.info("Фильтр 3: список терминов извлечен")
+    """
     logger.info("Начинаем фильтрацию - стоп-лист")
     sl = StopList(use_settings=True)
     filtered_terms1 = sl.filter(terms1)
@@ -113,13 +134,26 @@ if __name__ == "__main__":
     logger.info("Подсчитываем cvalue")
     max_1 = max(terms1, key=itemgetter(1)).wordcount
     max_2 = max(terms2, key=itemgetter(1)).wordcount
+    track_time("cvalue")
     cvalue_res_1 = cvalue.calculate(filtered_terms1, max_1)
+    track_time("cvalue")
+    logger.info("Начало")
     cvalue_res_2 = cvalue.calculate(filtered_terms2, max_2)
+    track_time("cvalue")
     logging.info("Подсчет закончен, сохраняем результаты в файл")
     save_text_stat(os.path.join('result', 'noun_plus_cvalue.txt'), cvalue_res_1)
     save_text_stat(os.path.join('result', 'adj_noun_cvalue.txt'), cvalue_res_2)
 
+    logger.info("Подсчитываем kfactor")
+    track_time("kfactor")
+    kfactor_res = kfactor.calculate(filtered_terms2, tagged_sentence_list)
+    track_time("kfactor")
+    logging.info("Подсчет закончен, сохраняем результаты в файл")
+    save_text_raw_terms(os.path.join('result', 'adj_noun_kfactor.txt'), kfactor_res)
+
     # TODO Удалять кандидаты с 1 словом
-    end_time = datetime.datetime.now()
-    logger.info("Алгоритм работал {0} c.".format(end_time - start_time))
+    track_time()
+    logger.info("Алгоритм работал {0} c.".format(difference()))
+    logger.info("Из которых cvalue работал {0} c.".format(difference("cvalue")))
+    logger.info("Из которых kfactor работал {0} c.".format(difference("kfactor")))
     logger.info("Конец")

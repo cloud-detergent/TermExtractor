@@ -1,15 +1,13 @@
 import pymorphy2
-from collections import namedtuple
 from ITermExtractor.Structures.PartOfSpeech import PartOfSpeech, POSNameConverter
 from ITermExtractor.Structures.Case import Case, CaseNameConverter
+from ITermExtractor.Structures.WordStructures import TaggedWord, collocation
 import helpers
 from typing import List, Tuple  # TODO PEP 484 & type checks
 import logging
 
 LENGTH_LIMIT_PER_PROCESS = 200
 __MorphAnalyzer__ = pymorphy2.MorphAnalyzer()
-# CollocationTuple = namedtuple('collocation', ['collocation', 'wordcount', 'freq'])
-TaggedWord = namedtuple('TaggedWord', ['word', 'pos', 'case', 'normalized'])
 
 
 def is_word_in_tuple_list(collocation: List[TaggedWord], check_word: str) -> bool:
@@ -250,8 +248,9 @@ def is_identical_collocation_q(collocation1: List[TaggedWord], collocation2: Lis
     try:
         comparison_result = is_identical_word(main_word_1, main_word_2)
     except ValueError as e:
-        logging.error("Проверка двух слов ('{0}' и '{1}') завершилась ошибкой\n{2}"
-                      .format(main_word_1, main_word_2, e))
+        pass
+        # TODO suppressed log output
+        # logging.error("Проверка двух слов ('{0}' и '{1}') завершилась ошибкой\n{2}".format(main_word_1, main_word_2, e))
     if not comparison_result:
         return False
     is_identical = True
@@ -408,3 +407,78 @@ def get_collocation_normal_form(collocations: List[List[TaggedWord]]) -> int:
 # def get_normal_form(collocation: List[])
 # TODO метод получения нормальной формы
 # прил+сущ
+
+
+def make_substrs(collocation: str) -> List[str]:  # TODO а почему артиллерия не может быть термином
+    """
+    Возвращает набор возможных подстрок
+    :param collocation: словосочетание
+    :return: подстроки
+
+    >>> make_substrs('занятие огневых позиций')
+    ['занятие огневых', 'огневых позиций']
+    >>> make_substrs('районы огневых позиций')
+    ['районы огневых', 'огневых позиций']
+    >>> make_substrs('состав группы обеспечения')
+    ['состав группы', 'группы обеспечения']
+    >>> make_substrs('распределение построения боевых порядков')
+    ['распределение построения боевых', 'построения боевых порядков', 'распределение построения', 'построения боевых', 'боевых порядков']
+    """
+    if not isinstance(collocation, str):
+        raise TypeError('Требуется строка')
+    if collocation == '':
+        return ''
+    words = [word for word in collocation.split()]  # TODO different 2/3/4w combinations
+    substrings = []
+    for wcount in range(len(words) - 1, 1, -1):
+        for j in range(0, len(words) - wcount + 1):
+            substrings.append(' '.join(words[j:j+wcount]))
+    return substrings
+
+
+def get_longer_terms(line: collocation, longer_grams: List[collocation], dictionary: List[TaggedWord]) -> List[collocation]:
+    """
+    Возвращает перечень кандидатов, в которых содержится строка line
+    :param line:
+    :param longer_grams:
+    :param dictionary:
+    :return:
+
+    >>> grams = [collocation(collocation='распределение построения боевых', wordcount=3, freq=1), collocation(collocation='построения боевых порядков', wordcount=3, freq=1), collocation(collocation='распределение построения', wordcount=2, freq=1), collocation(collocation='распределение построения боевых порядков', wordcount=4, freq=1)]
+    >>> dictionary = [TaggedWord(word='построения', pos=PartOfSpeech.noun, case=Case.genitive, normalized='построениe'), TaggedWord(word='боевых', pos=PartOfSpeech.adjective, case=Case.genitive, normalized='боевой'), TaggedWord(word='порядков', pos=PartOfSpeech.noun, case=Case.genitive, normalized='порядок'), TaggedWord(word='распределение', pos=PartOfSpeech.noun, case=Case.nominative, normalized='распределение'), TaggedWord(word='боевой', pos=PartOfSpeech.noun, case=Case.nominative, normalized='боевой'), TaggedWord(word='порядок', pos=PartOfSpeech.noun, case=Case.nominative, normalized='порядок')]
+    >>> get_longer_terms(collocation(collocation='боевой порядок', wordcount=2, freq=1), grams, dictionary)
+    [collocation(collocation='построения боевых порядков', wordcount=3, freq=1), collocation(collocation='распределение построения боевых порядков', wordcount=4, freq=1)]
+    """
+    tagged_line = assign_tags(line, dictionary)
+    longer_terms = []
+    for gram in longer_grams:
+        possible_identic_lines = [substr for substr in make_substrs(gram.collocation) if
+                                  len(substr.split(' ')) == line.wordcount]
+        tagged_possible_identic_lines = [assign_tags(l, dictionary) for l in possible_identic_lines]
+        id_check = [is_identical_collocation_q(tagged_line, l) for l in tagged_possible_identic_lines]
+        if True in id_check:
+            longer_terms.append(gram)
+    return longer_terms
+
+
+def assign_tags(phrase: str or collocation, dictionary: List[TaggedWord]) -> List[TaggedWord]:
+    """
+    Распределяет теги из словаря словам из словосочетания
+    :param phrase:
+    :param dictionary:
+    :return: словосочетания с тегами
+    >>> dictionary = [TaggedWord(word='построения', pos=PartOfSpeech.noun, case=Case.genitive, normalized='построениe'), TaggedWord(word='боевых', pos=PartOfSpeech.adjective, case=Case.genitive, normalized='боевой'), TaggedWord(word='порядков', pos=PartOfSpeech.noun, case=Case.genitive, normalized='порядок'), TaggedWord(word='распределение', pos=PartOfSpeech.noun, case=Case.nominative, normalized='распределение'), TaggedWord(word='боевой', pos=PartOfSpeech.noun, case=Case.nominative, normalized='боевой'), TaggedWord(word='порядок', pos=PartOfSpeech.noun, case=Case.nominative, normalized='порядок')]
+    >>> assign_tags('боевой порядок', dictionary)
+    [TaggedWord(word='боевой', pos=<PartOfSpeech.noun: (1, 'S существительное (яблоня, лошадь, корпус, вечность)')>, case=<Case.nominative: (1, 'именительный')>, normalized='боевой'), TaggedWord(word='порядок', pos=<PartOfSpeech.noun: (1, 'S существительное (яблоня, лошадь, корпус, вечность)')>, case=<Case.nominative: (1, 'именительный')>, normalized='порядок')]
+
+    """
+    if not (isinstance(phrase, str) or isinstance(phrase, collocation)):
+        raise TypeError("Передан аргумент неверного типа")
+    is_str = isinstance(phrase, str)
+    if is_str:
+        raw_words = phrase.split(' ')
+    else:
+        raw_words = phrase.collocation.split(' ')
+
+    tagged_collocation = [word for word in dictionary if word.word in raw_words]
+    return tagged_collocation

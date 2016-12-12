@@ -2,9 +2,9 @@ import pickle
 import re
 import os
 from typing import List
-from ITermExtractor.stat.cvalue import collocation
 from operator import itemgetter
 from helpers import remove_spans
+from ITermExtractor.Structures.WordStructures import collocation
 
 
 class StopList(object):
@@ -74,7 +74,7 @@ class StopList(object):
         self._Pattern = p_pattern
         return self._Pattern
 
-    def find_all(self, text: str) -> bool:
+    def find_all(self, text: str):
         infolist = list(re.finditer(self._Pattern, text, re.IGNORECASE))
         return infolist
 
