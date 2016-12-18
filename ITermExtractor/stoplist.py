@@ -65,6 +65,7 @@ class StopList(object):
             self._construct_pattern_()
 
     def _construct_pattern_(self):
+        # TODO переработать, удаляет из 'подавление огневых точек' слово 'огневых'. лингвистич инф с нормальными формами?
         if len(self._List_) == 0:
             return ""
         p_pattern = "\\b\\w*("
@@ -105,10 +106,11 @@ class StopList(object):
                 existing_nodes = [oterm for oterm in edited_terms if oterm.collocation == edited_term]
                 if edited_term != "":
                     if len(existing_nodes) == 0:
-                        edited_terms.append(
-                            collocation(collocation=edited_term,
-                                        freq=term.freq,
-                                        wordcount=len(edited_term.split(' '))))
+                        if len(edited_term.split(' ')) > 1:
+                            edited_terms.append(
+                                collocation(collocation=edited_term,
+                                            freq=term.freq,
+                                            wordcount=len(edited_term.split(' '))))
                     else:
                         node = existing_nodes[0]
                         edited_terms.append(

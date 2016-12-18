@@ -463,7 +463,11 @@ def get_longer_terms(line: collocation, longer_grams: List[collocation], diction
         possible_identic_lines = [substr for substr in make_substrs(gram.collocation) if
                                   len(substr.split(' ')) == line.wordcount]
         tagged_possible_identic_lines = [assign_tags(l, dictionary) for l in possible_identic_lines]
-        id_check = [is_identical_collocation_q(tagged_line, l) for l in tagged_possible_identic_lines]
+        try:
+            id_check = [is_identical_collocation_q(tagged_line, l) for l in tagged_possible_identic_lines]
+        except Exception as e:
+            logging.error("Ошибка при проверке {0} и {1},\n а именно {2}".format(line, gram, e))
+            continue
         if True in id_check:
             longer_terms.append(gram)
     return longer_terms
@@ -480,6 +484,7 @@ def assign_tags(phrase: str or collocation, dictionary: List[TaggedWord]) -> Lis
     [TaggedWord(word='боевой', pos=<PartOfSpeech.noun: (1, 'S существительное (яблоня, лошадь, корпус, вечность)')>, case=<Case.nominative: (1, 'именительный')>, normalized='боевой'), TaggedWord(word='порядок', pos=<PartOfSpeech.noun: (1, 'S существительное (яблоня, лошадь, корпус, вечность)')>, case=<Case.nominative: (1, 'именительный')>, normalized='порядок')]
 
     """
+    # TODO дубликаты c большим словарем
     if not (isinstance(phrase, str) or isinstance(phrase, collocation)):
         raise TypeError("Передан аргумент неверного типа")
     is_str = isinstance(phrase, str)

@@ -88,7 +88,7 @@ if __name__ == "__main__":
     logger = logging.getLogger()
     logger.info("\n============================================Запуск==============================================\n")
 
-    choice_tag_cache_read = input_menu("Брать информацию из кэша лингвистической информации?", ["Да", "Нет"]) == 1
+    choice_tag_cache_read = input_menu("Использовать предыдущие данные ?", ["Да", "Нет"]) == 1
     if not choice_tag_cache_read:
         choice_source = input_menu("Выберите источник", ["Стандартный текст", "Текстовый файл", "Pdf-документ"])
         if choice_source != 1:
@@ -114,12 +114,14 @@ if __name__ == "__main__":
                 test_file = os.path.join('data', choice_source_filename)
 
             word_limit = int(input_menu("Ограничение по количеству слов", [], False))
-            start_index = 800  # int(input_menu("Стартовый индекс", [], False))
+            start_index = 700  # int(input_menu("Стартовый индекс", [], False))
 
             logger.info("Выбран pdf документ '{0}'".format(test_file))
             text_importer = PdfTextImporter(filename=test_file, word_limit=word_limit, start_index=start_index)  # sys.argv[1]
             # TODO есть предложения, части которых разделены '\n'. части обрабатываются как отдельные предложения?
         input_text = text_importer.get_text()
+
+    choice_stoplist = input_menu("Использовать стоп-лист?", ["Да", "Нет"]) == 1
 
     track_time()
 
@@ -158,14 +160,18 @@ if __name__ == "__main__":
     logger.info("Начинаем фильтрацию - стоп-лист")
     sl = StopList(use_settings=True)
 
-    if USE_FILTER_1:
-        filtered_terms1 = sl.filter(terms1)
-    logger.info("Отфильтрован список 1, было/стало {0}/{1}"
-                .format(len(terms1), len(filtered_terms1)))
-    if USE_FILTER_2:
-        filtered_terms2 = sl.filter(terms2)
-        logger.info("Отфильтрован список 2, было/стало {0}/{1}"
-                .format(len(terms2), len(filtered_terms2)))
+    if choice_stoplist:
+        if USE_FILTER_1:
+            filtered_terms1 = sl.filter(terms1)
+        logger.info("Отфильтрован список 1, было/стало {0}/{1}"
+                    .format(len(terms1), len(filtered_terms1)))
+        if USE_FILTER_2:
+            filtered_terms2 = sl.filter(terms2)
+            logger.info("Отфильтрован список 2, было/стало {0}/{1}"
+                    .format(len(terms2), len(filtered_terms2)))
+    else:
+        filtered_terms1 = terms1
+        filtered_terms2 = terms2
 
     logger.info("Запись промежуточных результатов в файлы")
     if USE_FILTER_1:
@@ -195,14 +201,10 @@ if __name__ == "__main__":
 
     logger.info("Подсчитываем kfactor")
     track_time("kfactor")
-    """
     kfactor_res = kfactor.calculate(filtered_terms2, dictionary)
-    """
     track_time("kfactor")
     logging.info("Подсчет закончен, сохраняем результаты в файл")
-    """
     save_text_raw_terms(os.path.join('result', 'adj_noun_kfactor.txt'), kfactor_res)
-    """
 
     # TODO Удалять кандидаты с 1 словом ?
     track_time()

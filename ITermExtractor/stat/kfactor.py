@@ -20,9 +20,9 @@ def calculate(candidates: List[collocation], dictionary: List[TaggedWord]) -> Li
     # TODO после двойного прогона осуществляется отсев терминов, почему?
 
     logger.info("Терминологические кандидаты отсортированы, мин и макс длины слов выяснены")
-    logger.debug("Кандидатов было {0}, длина от {1} до {2}".format(len(candidates), min_word_count, max_word_count))
-    candidates = sl.filter(candidates)
-    logger.info("Произведена фильтрация через стоп-лист, осталось {0} кандидатов".format(len(candidates)))
+    # logger.debug("Кандидатов было {0}, длина от {1} до {2}".format(len(candidates), min_word_count, max_word_count))
+    # candidates = sl.filter(candidates)
+    # logger.info("Произведена фильтрация через стоп-лист, осталось {0} кандидатов".format(len(candidates)))
     logger.info("Переходим к алгоритму")
     for i in range(min_word_count, max_word_count + 1):
         # TODO output progrlLess
@@ -31,6 +31,7 @@ def calculate(candidates: List[collocation], dictionary: List[TaggedWord]) -> Li
         logger.debug("Обрабатываем термины из {0} слов, таких {1} к {2} элементов"
                      .format(i + 1, len(ngrams), len(longer_grams)))
         for ngram in ngrams:
+            logger.info("Проверяем словосочетание '{0}'".format(ngram.collocation))
             if ngram.wordcount == max_word_count:
                 longer_terms = []
             else:
@@ -38,12 +39,12 @@ def calculate(candidates: List[collocation], dictionary: List[TaggedWord]) -> Li
             if ngram.wordcount == min_word_count:
                 shorter_terms = []
             else:
-                shorter_terms = [assign_tags(s) for s in make_substrs(ngram.collocation)]
+                shorter_terms = [collocation(collocation=s, wordcount=len(s.split()), freq=ngram.freq) for s in make_substrs(ngram.collocation)]
 
-            logger.info("Проверяем словосочетание '{0}', в котором коротких подстрок {1}"
-                        .format(ngram.collocation, len(shorter_terms)))
-            logger.info("Более длинные термины, содержащие рассматриваемый: {0}"
-                        .format(longer_terms))
+            if len(longer_terms) > 0:
+                logger.info("Более длинные термины, содержащие рассматриваемый: {0}".format(longer_terms))
+            if len(shorter_terms) > 0:
+                logger.info("Словосочетание содержит короткие подстроки: {0}".format(shorter_terms))
 
             if len(longer_terms) == 0:
                 result_list.append(ngram)
@@ -58,21 +59,23 @@ def calculate(candidates: List[collocation], dictionary: List[TaggedWord]) -> Li
                 for shorter_term in shorter_terms:
                     if shorter_term.freq <= 1 / KFACTOR * ngram.freq:
                         # скорее всего, к этому моменту все подстроки должны быть добавлены
-                        is_appended = [True for term in result_list
-                                       if is_identical_collocation_q
-                                       (assign_tags(term.collocation, dictionary), shorter_term)]
-                        if not is_appended:
-                            shorter_term_words = [word.word for word in shorter_term]
-                            col = ' '.join(shorter_term_words)
+                        shorter_term_tagged = list(set(assign_tags(shorter_term.collocation, dictionary)))
+                        result_list_tagged = [list(set(assign_tags(term.collocation, dictionary))) for term in result_list]
+                        is_appended = [True for term in result_list_tagged
+                                       if is_identical_collocation_q(term, shorter_term_tagged)]
+                        if True not in is_appended:
                             result_list.append(collocation(
-                                collocation=col,
-                                wordcount=len(shorter_term_words),
+                                collocation=shorter_term.collocation,
+                                wordcount=shorter_term.wordcount,
                                 freq=ngram.freq
                             ))
-                            result_list.remove(ngram)
+                            try:
+                                result_list.remove(ngram)
+                                logger.debug("\t-|Более длинный термин был удален")
+                            except:
+                                pass
                             logger.debug("Подстрока кандидата '{0}' не была ранее в списке, но подходит по параметрам"
-                                         .format(col))
-                            logger.debug("Более длинный термин был удален")
+                                         .format(shorter_term.collocation))
         result_list = sorted(result_list, key=itemgetter(2), reverse=True)
     logger.info("Список терминов сформирован, элементов: {0}".format(len(result_list)))
     return result_list

@@ -39,11 +39,8 @@ class LinguisticFilter(object):
         for sentence in sentences:
             self.filter(sentence=sentence, append_mode=True)
         logger.info("Предложения обработаны, переходим к соединению одинаковых ключей")
-        logger.warning("Заглушка")
 
-        # Get the list of all word tags from all sentences
-
-        word_list = [(word.word, word) for sentence in sentences for word in sentence]
+        word_list = [(word.word, word) for sentence in sentences for word in sentence]  # Get the list of all word tags
         corrected_candidate_terms = parallel_conjugation(dict(word_list), self._candidate_terms_, is_single_threaded)
         logger.info("Перечень терминологических кандидатов построен (всего {1}/{0})".format(len(self._candidate_terms_), len(corrected_candidate_terms)))
         logger.info("Сортировка результата по частоте")
@@ -74,14 +71,24 @@ class LinguisticFilter(object):
         if not isinstance(sentence, list) or False in [isinstance(word, TaggedWord) for word in sentence]:
             raise TypeError("Необходим список слов из предложения")
         for word in sentence:  # все некорректные слова выкидываем за борт
-            if not helpers.is_correct_word(word.word):
+            if not helpers.is_correct_word(word.word) or str.isspace(word.word) or word.word == '':
                 sentence.remove(word)
 
         min_wlimit = self.pattern.get_col_min_word_limit()
         max_wlimit = self.pattern.get_col_max_word_limit()
         max_wlimit = max_wlimit if max_wlimit <= self._limit else self._limit
+
+        if len(sentence) < min_wlimit:
+            # logging.debug("В предложении слишком мало слов {0}".format(len(sentence)))  # TODO доп фильтрация на уровне извлечения предложений
+            return self._candidate_terms_ if append_mode else []
+        if len(sentence) < max_wlimit:
+            # logging.debug("{0} сл. < {1} сл., уменьшаем верхнюю границу".format(len(sentence), max_wlimit))
+            max_wlimit = len(sentence)
+
         if not append_mode:
             self._candidate_terms_ = []
+
+        # TODO почему-то выделяются ' налетами', 'открытия '
         for word_count in range(max_wlimit, min_wlimit - 1, -1):
             for i in range(0, len(sentence) - word_count + 1):  # извлечение словосочетаний, длиной от 2 слов и более
                 candidate_term = sentence[i:i+word_count]
