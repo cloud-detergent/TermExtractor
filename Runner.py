@@ -4,36 +4,38 @@
 """
 
 import re
-
+import os
 import ITermExtractor.Morph as m
+from typing import List
+from ITermExtractor.Morph import TaggedWord
 
 
-#from ITermExtractor.pos import Tagger
-
-
-def split_sentences(input_text: str) -> list:
-    # TODO учитывать списки с арабскими и римскими цифрами
+def split_sentences(input_text: str) -> str:
     """
     Делит текст на предложения
+    :param input_text: текст, содержащий несколько предложений, разделенный новыми линиями
+    :return:
 
     >>> split_sentences("Основная задача. Однако, в чем она заключается? Не в сиеминутном же восторге от бурной деятельности, воскликнет читатель! Да, это так.")
-    ['Основная задача', 'Однако, в чем она заключается', 'Не в сиеминутном же восторге от бурной деятельности, воскликнет читатель', 'Да, это так']
+    'Основная задача\\nОднако, в чем она заключается\\nНе в сиеминутном же восторге от бурной деятельности, воскликнет читатель\\nДа, это так'
     >>> split_sentences('Основные определения данной предметной области: \\n 1. Терминологичность - мера, подсчитывающая степень, с которой термин относится к определенной предметной области \\n 2. Синтагматичность - мера, определяющая силы ассоциации слов в термине между собой')
-    ['Основные определения данной предметной области:', 'Терминологичность - мера, подсчитывающая степень, с которой термин относится к определенной предметной области', 'Синтагматичность - мера, определяющая силы ассоциации слов в термине между собой']
+    'Основные определения данной предметной области\\nТерминологичность - мера, подсчитывающая степень, с которой термин относится к определенной предметной области\\nСинтагматичность - мера, определяющая силы ассоциации слов в термине между собой'
     >>> split_sentences('Основные определения данной предметной области: \\n I. Терминологичность - мера, подсчитывающая степень, с которой термин относится к определенной предметной области \\n IV. Синтагматичность - мера, определяющая силы ассоциации слов в термине между собой')
-    ['Основные определения данной предметной области:', 'Терминологичность - мера, подсчитывающая степень, с которой термин относится к определенной предметной области', 'Синтагматичность - мера, определяющая силы ассоциации слов в термине между собой']
+    'Основные определения данной предметной области\\nТерминологичность - мера, подсчитывающая степень, с которой термин относится к определенной предметной области\\nСинтагматичность - мера, определяющая силы ассоциации слов в термине между собой'
 
-
-    :param input_text: текст, содержащий несколько предложений
-    :return:
     """
-    split_symbols = '[\dxvcmiXVCMI]{1,4}[.)]{1}\s|(?<=\w)+[.?!](\s|$)'  # Символы конца предложения + номера в списке
-    sentences = re.split(split_symbols, input_text)
-    sentences = [sentence.strip() for sentence in sentences if sentence is not None and sentence != '' and not str.isspace(sentence)]
+    split_symbols = r'[\dxvcmiXVCMI]{1,4}[.)]{1}\s|(?<=\w)+[.?!:](\s+|$)'  # Символы конца предложения + номера в списке
+    sentences = re.sub(pattern=split_symbols, repl=os.linesep, string=input_text)
+    sentences = re.sub(pattern=r"[^\S\r\n]+", repl=" ", string=sentences)
+    sentences = re.sub(pattern=r"[^\S\r\n]*[\r\n][^\S\r\n]*", repl=os.linesep, string=sentences)
+    sentences = re.sub(pattern=r"[\r\n]{2,}", repl=os.linesep, string=sentences)
+    sentences = re.sub(pattern=r"[\r\n]$", repl="", string=sentences)
+    # sentences = re.split(split_symbols, input_text)
+    # sentences = [sentence.strip() for sentence in sentences if sentence is not None and sentence != '' and not str.isspace(sentence)]
     return sentences
 
 
-def tag_collocation(word_collocation: str) -> list:
+def tag_collocation(word_collocation: str) -> List[TaggedWord]:
     """
     Обрабатывает словосочетание, присваивая каждому слову метку части речи
     :param word_collocation: словосочетание
@@ -51,7 +53,7 @@ def tag_collocation(word_collocation: str) -> list:
     #    tagged.append((word, label))
 
 
-def parse_text(input_text: str) -> list:
+def parse_text(input_text: str) -> List[List[TaggedWord]]:
     """
     Метод обрабатывает текст, деля его на предложения и присваивая каждому слову тэг/метку части речи
     :param input_text: текст, который необходимо пропарсить
@@ -59,7 +61,7 @@ def parse_text(input_text: str) -> list:
     """
     tagged_sent_list = []
     sentences = split_sentences(input_text)
-    for sentence in sentences:
+    for sentence in sentences.splitlines():
         if sentence != "":
             tag_info = tag_collocation(sentence)
             tagged_sent_list.append(tag_info)

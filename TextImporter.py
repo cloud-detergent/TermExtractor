@@ -1,42 +1,95 @@
+import textract
+import io
+import re
+import logging
+
+
 class TextImporter(object):
-    """Абстрактный класс импорта текста"""
-    def getText(self):
+    """
+    Абстрактный класс, использующийся для импорта начального текста
+    """
+    def get_text(self) -> str:
+        """
+        Возвращает текст из источника
+        :return: текст
+        """
         return ""
 
 
 class DefaultTextImporter(TextImporter):
     """
-    Класс, возвращающий стандартный текст
+    Cтандартный текст
     """
-    __defaultText = "Съешь же ещё этих мягких французских булок, да выпей чаю"
-    __defaultText2 = "Основная задача его заключается в непосредственной поддержке стрелковых рот и сопровождении их огнем и движением. Огонь минометных батальонов взаимодействует с огнем стрелкового оружия и артиллерии."
-    __text_number = 0
+    __defaultText = "Основная задача его заключается в непосредственной поддержке стрелковых рот и сопровождении их огнем и движением. Огонь минометных батальонов взаимодействует с огнем стрелкового оружия и артиллерии."
 
     def __init__(self, number=1):
         self.__text_number = number
 
-    def getText(self):
-        if self.__text_number == 1:
-            return self.__defaultText
-        else:
-            return self.__defaultText2
+    def get_text(self) -> str:
+        return self.__defaultText
 
 
 class PlainTextImporter(TextImporter):
+    """
+    Текст из файла
+    """
     def __init__(self, filename):
         self.FileName = filename
 
-    def getText(self):
-        f = open(self.FileName, "rt")
-        text = f.read()
+    def get_text(self):
+        with open(file=self.FileName, mode="rt", encoding="utf-8") as f:
+            text = f.read()
         return text
 
 
 class PdfTextImporter(TextImporter):
-    def __init__(self, fileName):
-        self.FileName = fileName
+    """
+    Текст из pdf документа
+    """
+    __WORD_LIMIT__ = 1000
+    __separators__ = '[ .?!\n—"]+'
 
-    def getText(self):
-        f = open(self.FileName, "rt")
-        text = f.read()
+    def __init__(self, filename: str, word_limit: int = -1, start_index: int = 0):
+        """
+        :param filename: имя файла
+        :param word_limit: ограничение по количеству слов
+        :param start_index: номер начального слова, с которого следует начать фрагмент
+        """
+        if not filename.endswith(".pdf"):
+            raise TypeError("Требуется pdf документ")
+        self.FileName = filename
+        self.__WORD_LIMIT__ = word_limit
+        self.__START_INDEX__ = start_index
+
+    def get_text(self) -> str:
+        """
+        Извлекает текст из pdf документа и выделяет при необходимости из него фрагмент
+        :return: текст
+        """
+        logger = logging.getLogger()
+        logger.debug("Начало извлечения текста из pdf документа")
+        text = textract.process(self.FileName)
+        logger.debug("Текст извлечен")
+        text = text.decode('utf-8')
+        logger.debug("Текст перекодирован в utf-8")
+        if self.__WORD_LIMIT__ != -1:
+            logger.info("Выделение фрагмента текста длиной {0} сл., с {1} сл.".format(self.__WORD_LIMIT__, self.__START_INDEX__))
+            word_count = len(re.split(self.__separators__, text))
+
+            if word_count > self.__WORD_LIMIT__ + self.__START_INDEX__:
+                current_word_index = 0
+
+                with io.StringIO(initial_value=text) as input_stream, io.StringIO() as output_stream:
+                    while current_word_index <= self.__WORD_LIMIT__ + self.__START_INDEX__:
+                        line = input_stream.readline()
+                        line_words = re.split(self.__separators__, line)
+                        while line_words.count('') > 0:
+                            line_words.remove('')
+
+                        current_word_index += len(line_words)
+                        if current_word_index >= self.__START_INDEX__:
+                            line = line.replace("\n\n", '\n')
+                            output_stream.write(line)
+                    text = output_stream.getvalue()
+                    logger.info("Фрагмент из {0} сл извлечен".format(current_word_index - self.__START_INDEX__))
         return text

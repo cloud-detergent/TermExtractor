@@ -1,8 +1,10 @@
 import pickle
 import re
 import os
-
+from typing import List
+from operator import itemgetter
 from helpers import remove_spans
+from ITermExtractor.Structures.WordStructures import collocation
 
 
 class StopList(object):
@@ -19,14 +21,17 @@ class StopList(object):
                 raise FileNotFoundError("Путь указывает на несуществующий файл. Использование настроек для стоп-листа невозможно")
             self.open_settings()
 
+    """
     def __del__(self):
         if self._use_settings_:
             self.save_setting()
+    """
 
     def open_settings(self):
         try:
             with open(self._path_, 'rb') as fp:
                 self._List_ = pickle.load(fp)
+            self._construct_pattern_()
         except EOFError:
             self._List_ = []
             print("Файл со стоп-листом пуст")
@@ -69,39 +74,112 @@ class StopList(object):
         self._Pattern = p_pattern
         return self._Pattern
 
-    def find_all(self, text: str) -> bool:
+    def find_all(self, text: str):
         infolist = list(re.finditer(self._Pattern, text, re.IGNORECASE))
         return infolist
 
-    def filter(self, candidate_terms: dict) -> dict:
+    def filter(self, candidate_terms: List[collocation]) -> List[collocation]:
         """
         Фильтрует список терминологических кандидатов в соответствии со стоп-списком
         :param candidate_terms: словарь со списком словосочетаний и частотой их встречаемости
         :return: отфильтрованный словарь терминологических кандидатов
 
-        >>> sl.filter(var_1)
+        >>> sorted(sl.filter(var_1), key=itemgetter(2), reverse=True)
+        [collocation(collocation='артиллерийский огонь', wordcount=2, freq=5), collocation(collocation='наступление года', wordcount=2, freq=5), collocation(collocation='январь', wordcount=1, freq=5), collocation(collocation='трехэтажный дом', wordcount=2, freq=3)]
 
         """
         # TODO удалять из списка при нахождении стоп-слова, не соединять термины
-        flag = False in [isinstance(candidate_terms[term], int) and isinstance(term, str) for term in candidate_terms.keys()]
+        flag = False in [isinstance(term, collocation) for term in candidate_terms]
         if flag:
-            raise ValueError("Необходим словарь терминов с частотой встречаемости")
+            raise ValueError("Необходим список терминов с частотой встречаемости")
         if len(self._List_) == 0:
             return candidate_terms
 
-        edited_terms = dict(candidate_terms)
-        for term in edited_terms.keys():
-            found = self.find_all(term)
+        edited_terms = list(candidate_terms)
+        for term in edited_terms:
+            found = self.find_all(term.collocation)
             if len(found) > 0:
                 spans = [(m.span()[0], m.span()[1]) for m in found]
-                edited_term = remove_spans(term, spans)
+                edited_term = remove_spans(term.collocation, spans)
 
-                if edited_terms[edited_term] > 0:
-                    del edited_terms[term]
-                else:
-                    edited_terms[edited_term] = edited_terms[term]
+                existing_nodes = [oterm for oterm in edited_terms if oterm.collocation == edited_term]
+                if edited_term != "":
+                    if len(existing_nodes) == 0:
+                        edited_terms.append(
+                            collocation(collocation=edited_term,
+                                        freq=term.freq,
+                                        wordcount=len(edited_term.split(' '))))
+                    else:
+                        node = existing_nodes[0]
+                        edited_terms.append(
+                            collocation(collocation=node.collocation,
+                                        freq=term.freq + node.freq,
+                                        wordcount=node.wordcount))
+                        edited_terms.remove(node)
+                    edited_terms.remove(term)
         return edited_terms
 
+    def __str__(self):
+        return ' '.join(self._List_)
+
+    def str_column_enumerated(self):
+        result = ""
+        for index, item in enumerate(self._List_):
+            separator = os.linesep if (index + 1) % 3 == 0 else "\t"
+            result += "{0}) {1}{2}".format(index + 1, item, separator)
+        return result
+
+    def get_by_index(self, no):
+        if not 0 <= no < len(self._List_):
+            return None
+        return self._List_[no]
+
+
+def demo():
+    sl = StopList(use_settings=True)
+    print("Действия:")
+    choice = -1
+    while choice != 0:
+        print("1. Вывести стоп-список")
+        print("2. Загрузить стоп-список из файла")
+        print("3. Записать стоп-список в файл")
+        print("4. Добавить элемент")
+        print("5. Удалить элемент")
+        print("0. Выход")
+        try:
+            choice = int(input())
+        except:
+            print("Повторить ввод")
+        if choice == 1:
+            print(str(sl))
+        elif choice == 2:
+            sl.open_settings()
+            print("Список загружен")
+        elif choice == 3:
+            sl.save_setting()
+            print("Список сохранен")
+        elif choice == 4:
+            pattern = input()
+            sl.append_item(pattern)
+            print("Добавлено")
+        elif choice == 5:
+            print("Выберите номер элемента для удаления, 0 - отмена")
+            print(sl.str_column_enumerated())
+            while True:
+                try:
+                    number = int(input())
+                    break
+                except:
+                    print("Повторить ввод")
+            if number > 0:
+                item = sl.get_by_index(number - 1)
+                sl.remove_item(item)
+                print("Удалено")
+        elif choice == 0:
+            pass
+        else:
+            print("Повторите ввод")
+        print()
 
 if __name__ == "__main__":
     import doctest
@@ -109,15 +187,17 @@ if __name__ == "__main__":
     current_dir = os.path.join(path_play, "..")
 
     os.chdir(current_dir)
-    sl = StopList(use_settings=True)
-    sl.append_list(["раздел", "УТВЕРЖДАЮ", "подпись"])  # TODO а будет ли удаляться строка (подпись)?
-    str_dict_1 = {"трехэтажный дом": 2,
-                  "трехэтажный раздел": 1,
-                  "артиллерийский огонь": 5,
-            }
+    # demo()
+    sl = StopList(use_settings=False)
+    sl.append_list(["раздел", "УТВЕРЖДАЮ", "подпись", "г"])  # TODO а будет ли удаляться строка (подпись)?
+    str_list = [
+        collocation(collocation="трехэтажный дом", wordcount=2, freq=2),
+        collocation(collocation="трехэтажный раздельный дом", wordcount=3, freq=1),
+        collocation(collocation="артиллерийский огонь", wordcount=2, freq=5),
+        collocation(collocation="наступление года", wordcount=2, freq=5),
+        collocation(collocation="январь г", wordcount=2, freq=5)
+    ]
     doctest.testmod(extraglobs=
                     {'sl': sl,
-                     'var_1': str_dict_1
+                     'var_1': str_list
                      })
-# TODO test this!
-
