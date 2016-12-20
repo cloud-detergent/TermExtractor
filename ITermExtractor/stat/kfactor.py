@@ -9,6 +9,11 @@ KFACTOR = 0.7
 THRESHOLD = {2: 0, 3: 0, 4: 0, 5: 0}
 
 
+def is_beyond_threshold(phrase: collocation) -> bool:
+    result = phrase.freq >= THRESHOLD[phrase.wordcount]
+    return result
+
+
 def calculate(candidates: List[collocation], dictionary: List[TaggedWord]) -> List[collocation]:
     logger = logging.getLogger()
     result_list = []
@@ -40,17 +45,20 @@ def calculate(candidates: List[collocation], dictionary: List[TaggedWord]) -> Li
                 logger.info("Более длинные термины, содержащие рассматриваемый: {0} -> {1}".format(longer_terms, ngram.collocation))
 
             if len(longer_terms) == 0:
-                result_list.append(ngram)
+                if is_beyond_threshold(ngram):
+                    result_list.append(ngram)
             elif len(longer_terms) > 0:
                 for longer_term in longer_terms:
                     if longer_term.freq > KFACTOR * ngram.freq:
-                        result_list.append(longer_term)
+                        if is_beyond_threshold(longer_term):
+                            result_list.append(longer_term)
                     else:
-                        result_list.append(ngram)
-                        if longer_term in result_list:
-                            result_list.remove(longer_term)
-                        longer_grams.remove(longer_term)
-                        candidates.remove(longer_term)
+                        if is_beyond_threshold(ngram):
+                            result_list.append(ngram)
+                            if longer_term in result_list:
+                                result_list.remove(longer_term)
+                            longer_grams.remove(longer_term)
+                            candidates.remove(longer_term)
 
     result_list = sorted(result_list, key=itemgetter(2), reverse=True)
     logger.info("Список терминов сформирован, элементов: {0}".format(len(result_list)))
