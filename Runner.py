@@ -25,7 +25,19 @@ def split_sentences(input_text: str) -> str:
 
     """
     split_symbols = r'[\dxvcmiXVCMI]{1,4}[.)]{1}\s|(?<=\w)+[.?!:](\s+|$)'  # Символы конца предложения + номера в списке
-    sentences = re.sub(pattern=split_symbols, repl=os.linesep, string=input_text)
+    contents_symbols = r'(?<=\w\b)[ ]*\.{2,}\d{1,5}'  # Символы разделители пунктов содержания
+    divided_by_new_line_sentences_symbols = r'(?<=\w\b)[\r\n]+(?=\b\w)|(?<=\w\b,)[\r\n]+(?=\b\w)'  # Для предложений, в середине который \n
+    reference_symbols = r'\[[\d\u00ab?\w+\u00bb?\u2010-\u2015\.\s]+\]'  # Символы-ссылки на литературу
+    brackets_writings_symbols = r'\(([\w ]+)\)'  # для доп информации в скобках
+
+    spaced_words_pattern = r'\b(\w ){3,}\w\b'  # TODO вернуться к обработке разреженных слов
+    #  TODO возможно какую-то доп обработку: командира батальона (полка) -> командира батальона, командира полка
+
+    sentences = re.sub(pattern=divided_by_new_line_sentences_symbols, repl=' ', string=input_text)
+    sentences = re.sub(pattern=contents_symbols, repl=os.linesep, string=sentences)
+    sentences = re.sub(pattern=split_symbols, repl=os.linesep, string=sentences)
+    sentences = re.sub(pattern=reference_symbols, repl=os.linesep, string=sentences)
+    sentences = re.sub(pattern=brackets_writings_symbols, repl=r'\1', string=sentences)
     sentences = re.sub(pattern=r"[^\S\r\n]+", repl=" ", string=sentences)
     sentences = re.sub(pattern=r"[^\S\r\n]*[\r\n][^\S\r\n]*", repl=os.linesep, string=sentences)
     sentences = re.sub(pattern=r"[\r\n]{2,}", repl=os.linesep, string=sentences)

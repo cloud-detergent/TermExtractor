@@ -5,7 +5,6 @@ from TextImporter import (DefaultTextImporter, PlainTextImporter, PdfTextImporte
 from typing import List
 from operator import itemgetter
 from ITermExtractor.Structures.WordStructures import TaggedWord
-import sys
 import Runner
 import datetime
 import os
@@ -65,10 +64,10 @@ def difference(desc: str = ""):
     return diffs
 
 
-def input_menu(text: str, choices: List[str], is_menu_entry: bool = True) -> int or str:
+def input_menu(text: str, choices: List[str], is_menu_entry: bool = True, show_options: bool = True) -> int or str:
     print("\n{0}".format(text))
     data = '\n'.join(["{0}) {1}".format(index + 1, choice) for index, choice in enumerate(choices)])
-    print(data)
+    print(data if show_options else str())
     while True:
         choice = input()
         if is_menu_entry:
@@ -76,7 +75,7 @@ def input_menu(text: str, choices: List[str], is_menu_entry: bool = True) -> int
                 choice = int(choice)
                 if not 0 < choice <= len(choices):
                     raise TypeError
-            except Exception:
+            except:
                 print("Повторите ввод")
                 continue
         break
@@ -84,6 +83,10 @@ def input_menu(text: str, choices: List[str], is_menu_entry: bool = True) -> int
     return choice
 
 if __name__ == "__main__":
+    USE_FILTER_1 = True
+    USE_FILTER_2 = True
+    USE_CVALUE_1 = USE_CVALUE_2 = USE_KFACTOR = False
+
     logger_settings.setup()
     logger = logging.getLogger()
     logger.info("\n============================================Запуск==============================================\n")
@@ -114,14 +117,24 @@ if __name__ == "__main__":
                 test_file = os.path.join('data', choice_source_filename)
 
             word_limit = int(input_menu("Ограничение по количеству слов", [], False))
-            start_index = 700  # int(input_menu("Стартовый индекс", [], False))
+            start_index = 600  # int(input_menu("Стартовый индекс", [], False))
 
             logger.info("Выбран pdf документ '{0}'".format(test_file))
             text_importer = PdfTextImporter(filename=test_file, word_limit=word_limit, start_index=start_index)  # sys.argv[1]
             # TODO есть предложения, части которых разделены '\n'. части обрабатываются как отдельные предложения?
-        input_text = text_importer.get_text()
 
     choice_stoplist = input_menu("Использовать стоп-лист?", ["Да", "Нет"]) == 1
+
+    options = ['c-value с Noun+ фильтром', 'c-value с Adj|Noun фильтром', 'kfactor', 'закончить выбор']
+    choice_algorithms = -1
+    while choice_algorithms != len(options):
+        choice_algorithms = input_menu("Выбор алгоритмов", options, show_options=choice_algorithms == -1)
+        USE_CVALUE_1 = USE_CVALUE_1 or choice_algorithms == 1
+        USE_CVALUE_2 = USE_CVALUE_2 or choice_algorithms == 2
+        USE_KFACTOR = USE_KFACTOR or choice_algorithms == 3
+    print("Выбор осуществлен")
+    if not choice_tag_cache_read:
+        input_text = text_importer.get_text()
 
     track_time()
 
@@ -137,9 +150,6 @@ if __name__ == "__main__":
             save_tag_data(os.path.join('result', 'tags'), tagged_sentence_list)
             logger.info("Теги сохранены в файл")
 
-    USE_FILTER_1 = True
-    USE_FILTER_2 = True
-
     logger.debug("Начало извлечения списка терминов")
     if USE_FILTER_1:
         logger.info("Фильтр 1: Начало")
@@ -152,23 +162,16 @@ if __name__ == "__main__":
         filter2 = AdjNounLinguisticFilter()
         terms2 = filter2.filter_text(tagged_sentence_list)
         logger.info("Фильтр 2: список терминов извлечен")
-    """
-    logger.info("Фильтр 3: Начало")
-    terms3 = filter3.filter_text(tagged_sentence_list)
-    logger.info("Фильтр 3: список терминов извлечен")
-    """
-    logger.info("Начинаем фильтрацию - стоп-лист")
-    sl = StopList(use_settings=True)
 
     if choice_stoplist:
+        logger.info("Начинаем фильтрацию - стоп-лист")
+        sl = StopList(use_settings=True)
         if USE_FILTER_1:
             filtered_terms1 = sl.filter(terms1)
-        logger.info("Отфильтрован список 1, было/стало {0}/{1}"
-                    .format(len(terms1), len(filtered_terms1)))
+            logger.info("Отфильтрован список 1, было/стало {0}/{1}".format(len(terms1), len(filtered_terms1)))
         if USE_FILTER_2:
             filtered_terms2 = sl.filter(terms2)
-            logger.info("Отфильтрован список 2, было/стало {0}/{1}"
-                    .format(len(terms2), len(filtered_terms2)))
+            logger.info("Отфильтрован список 2, было/стало {0}/{1}".format(len(terms2), len(filtered_terms2)))
     else:
         filtered_terms1 = terms1
         filtered_terms2 = terms2
@@ -184,27 +187,28 @@ if __name__ == "__main__":
     dictionary = [word for sentence in tagged_sentence_list for word in sentence]
     cvalue.set_dictionary(dictionary)
     track_time("cvalue")
-    if USE_FILTER_1:
-        max_1 = max(terms1, key=itemgetter(1)).wordcount
+    if USE_FILTER_1 and USE_CVALUE_1:
+        max_1 = max(filtered_terms1, key=itemgetter(1)).wordcount
         cvalue_res_1 = cvalue.calculate(filtered_terms1, max_1)
     track_time("cvalue")
-    if USE_FILTER_2:
-        max_2 = max(terms2, key=itemgetter(1)).wordcount
+    if USE_FILTER_2 and USE_CVALUE_2:
+        max_2 = max(filtered_terms2, key=itemgetter(1)).wordcount
         cvalue_res_2 = cvalue.calculate(filtered_terms2, max_2)
     track_time("cvalue")
 
     logger.info("Подсчет закончен, сохраняем результаты в файл")
-    if USE_FILTER_1:
+    if USE_FILTER_1 and USE_CVALUE_1:
         save_text_stat(os.path.join('result', 'noun_plus_cvalue.txt'), cvalue_res_1)
-    if USE_FILTER_2:
+    if USE_FILTER_2 and USE_CVALUE_2:
         save_text_stat(os.path.join('result', 'adj_noun_cvalue.txt'), cvalue_res_2)
 
     logger.info("Подсчитываем kfactor")
     track_time("kfactor")
-    kfactor_res = kfactor.calculate(filtered_terms2, dictionary)
+    if USE_FILTER_2 and USE_KFACTOR:
+        kfactor_res = kfactor.calculate(filtered_terms2, dictionary)
+        logging.info("Подсчет закончен, сохраняем результаты в файл")
+        save_text_raw_terms(os.path.join('result', 'adj_noun_kfactor.txt'), kfactor_res)
     track_time("kfactor")
-    logging.info("Подсчет закончен, сохраняем результаты в файл")
-    save_text_raw_terms(os.path.join('result', 'adj_noun_kfactor.txt'), kfactor_res)
 
     # TODO Удалять кандидаты с 1 словом ?
     track_time()
