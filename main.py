@@ -23,11 +23,24 @@ def save_text_raw_terms(filename: str, input_list: List[collocation]):
         f.writelines(data)
 
 
+def open_raw_terms(filename: str) -> List[collocation]:
+    result_list = []
+    with open(file=filename, mode="rt", encoding="utf-8") as f:
+        data = f.readlines()
+        for line in data:
+            parts = line.split(" = ")
+            wordcount = len(parts[0].split(' '))
+            result_list.append(collocation(collocation=parts[0],
+                        wordcount=wordcount,
+                        freq=float(parts[1])))
+    return result_list
+
+
 def save_text_stat(filename: str, input_list: List[cvalue.params]):
     with open(file=filename, mode="wt", encoding="utf-8") as f:
         data = []
         for line in input_list:
-            data.append("{0} = {1}{2}".format(line.name, line.cvalue, os.linesep))
+            data.append("{0} = {1}{2}".format(line.name, round(line.cvalue, 3), os.linesep))
         f.writelines(data)
 
 
@@ -85,13 +98,18 @@ def input_menu(text: str, choices: List[str], is_menu_entry: bool = True, show_o
 if __name__ == "__main__":
     USE_FILTER_1 = True
     USE_FILTER_2 = True
+    RERUN_FILTER_1 = True
+    RERUN_FILTER_2 = True
     USE_CVALUE_1 = USE_CVALUE_2 = USE_KFACTOR = False
 
     logger_settings.setup()
     logger = logging.getLogger()
+    # logger = logger_settings.get_logger()
     logger.info("\n============================================Запуск==============================================\n")
 
-    choice_tag_cache_read = input_menu("Использовать предыдущие данные ?", ["Да", "Нет"]) == 1
+    choice_single_thread = input_menu("Обрабатывать данные в одном потоке?", ["Да", "Нет"]) == 1
+
+    choice_tag_cache_read = input_menu("Использовать предыдущие данные морфологического анализа ?", ["Да", "Нет"]) == 1
     if not choice_tag_cache_read:
         choice_source = input_menu("Выберите источник", ["Стандартный текст", "Текстовый файл", "Pdf-документ"])
         if choice_source != 1:
@@ -132,6 +150,9 @@ if __name__ == "__main__":
         USE_CVALUE_1 = USE_CVALUE_1 or choice_algorithms == 1
         USE_CVALUE_2 = USE_CVALUE_2 or choice_algorithms == 2
         USE_KFACTOR = USE_KFACTOR or choice_algorithms == 3
+
+        # USE_FILTER_1 = USE_CVALUE_1 or USE_KFACTOR
+        # USE_FILTER_2 = USE_CVALUE_2
     print("Выбор осуществлен")
     if not choice_tag_cache_read:
         input_text = text_importer.get_text()
@@ -139,10 +160,20 @@ if __name__ == "__main__":
     track_time()
 
     tagged_sentence_list = []
+    terms1 = []
+    terms2 = []
+    filtered_terms1 = []
+    filtered_terms2 = []
+
     if choice_tag_cache_read:
         tagged_sentence_list = open_tag_data(os.path.join('result', 'tags'))
         logger.info("Теги взяты из файла, в котором {0}"
                     .format("пусто" if len(tagged_sentence_list) == 0 else "есть данные"))
+        terms1 = open_raw_terms(os.path.join('result','inter-noun_plus.txt'))
+        terms2 = open_raw_terms(os.path.join('result','inter-adj_noun.txt'))
+        RERUN_FILTER_1 = False
+        RERUN_FILTER_2 = False
+
     if not choice_tag_cache_read or len(tagged_sentence_list) == 0:
         tagged_sentence_list = Runner.parse_text(input_text=input_text)
         logger.debug("Текст обработан, количество слов с тегами {0}".format(len(tagged_sentence_list)))
@@ -151,16 +182,16 @@ if __name__ == "__main__":
             logger.info("Теги сохранены в файл")
 
     logger.debug("Начало извлечения списка терминов")
-    if USE_FILTER_1:
+    if USE_FILTER_1 and RERUN_FILTER_1:
         logger.info("Фильтр 1: Начало")
         filter1 = NounPlusLinguisticFilter()
-        terms1 = filter1.filter_text(tagged_sentence_list)
+        terms1 = filter1.filter_text(tagged_sentence_list, choice_single_thread)
         logger.info("Фильтр 1: список терминов извлечен")
 
-    if USE_FILTER_2:
+    if USE_FILTER_2 and RERUN_FILTER_2:
         logger.info("Фильтр 2: Начало")
         filter2 = AdjNounLinguisticFilter()
-        terms2 = filter2.filter_text(tagged_sentence_list)
+        terms2 = filter2.filter_text(tagged_sentence_list, choice_single_thread)
         logger.info("Фильтр 2: список терминов извлечен")
 
     if choice_stoplist:
@@ -177,10 +208,10 @@ if __name__ == "__main__":
         filtered_terms2 = terms2
 
     logger.info("Запись промежуточных результатов в файлы")
-    if USE_FILTER_1:
-        save_text_raw_terms(os.path.join('result', 'noun_plus.txt'), filtered_terms1)
-    if USE_FILTER_2:
-        save_text_raw_terms(os.path.join('result', 'adj_noun.txt'), filtered_terms2)
+    if USE_FILTER_1 and RERUN_FILTER_1:
+        save_text_raw_terms(os.path.join('result', 'inter-noun_plus.txt'), filtered_terms1)
+    if USE_FILTER_2 and RERUN_FILTER_2:
+        save_text_raw_terms(os.path.join('result', 'inter-adj_noun.txt'), filtered_terms2)
     logger.info("Данные записаны")
 
     logger.info("Подсчитываем cvalue")
@@ -189,25 +220,27 @@ if __name__ == "__main__":
     track_time("cvalue")
     if USE_FILTER_1 and USE_CVALUE_1:
         max_1 = max(filtered_terms1, key=itemgetter(1)).wordcount
+        logger.info("Переход к подчету, фильтр 1, к обработке {0}".format(len(filtered_terms1)))
         cvalue_res_1 = cvalue.calculate(filtered_terms1, max_1)
     track_time("cvalue")
     if USE_FILTER_2 and USE_CVALUE_2:
         max_2 = max(filtered_terms2, key=itemgetter(1)).wordcount
+        logger.info("Переход к подчету, фильтр 2, к обработке {0}".format(len(filtered_terms2)))
         cvalue_res_2 = cvalue.calculate(filtered_terms2, max_2)
     track_time("cvalue")
 
     logger.info("Подсчет закончен, сохраняем результаты в файл")
     if USE_FILTER_1 and USE_CVALUE_1:
-        save_text_stat(os.path.join('result', 'noun_plus_cvalue.txt'), cvalue_res_1)
+        save_text_stat(os.path.join('result', 'cvalue_noun_plus.txt'), cvalue_res_1)
     if USE_FILTER_2 and USE_CVALUE_2:
-        save_text_stat(os.path.join('result', 'adj_noun_cvalue.txt'), cvalue_res_2)
+        save_text_stat(os.path.join('result', 'cvalue_adj_noun.txt'), cvalue_res_2)
 
-    logger.info("Подсчитываем kfactor")
+    logger.info("Подсчитываем kfactor, к обработке {0}".format(len(filtered_terms1)))
     track_time("kfactor")
     if USE_FILTER_2 and USE_KFACTOR:
-        kfactor_res = kfactor.calculate(filtered_terms2, dictionary)
+        kfactor_res = kfactor.calculate(filtered_terms1, dictionary)
         logging.info("Подсчет закончен, сохраняем результаты в файл")
-        save_text_raw_terms(os.path.join('result', 'adj_noun_kfactor.txt'), kfactor_res)
+        save_text_raw_terms(os.path.join('result', 'kfactor_noun_plus.txt'), kfactor_res)
     track_time("kfactor")
 
     # TODO Удалять кандидаты с 1 словом ?
@@ -216,3 +249,4 @@ if __name__ == "__main__":
     logger.info("Из которых cvalue работал {0} c.".format(difference("cvalue")))
     logger.info("Из которых kfactor работал {0} c.".format(difference("kfactor")))
     logger.info("Конец")
+    print("Конец обработки данных")

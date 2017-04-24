@@ -17,6 +17,7 @@ params_substr.nested_inclusions.__doc__ = "количество более дл�
 THRESHOLD = 1
 linguistic_container = None
 
+
 class LinguisticContainer(object):
     __dictionary__ = []
 
@@ -40,6 +41,9 @@ def calculate(candidates: List[collocation], max_len: int) -> List[params]:
     other_candidates = [candidate for candidate in candidates if candidate.wordcount < max_len]
     # other_candidates = candidates - max_len_candidates # retract union
 
+    logging.info("Всего словосочетаний: {0}, из них максимальной длины - {1}, других - {2}"
+                 .format(len(candidates), len(max_len_candidates), len(other_candidates)))
+
     for candidate in max_len_candidates:
         cval = math.log(candidate.wordcount, 2) * candidate.freq
         if cval > THRESHOLD:
@@ -60,6 +64,7 @@ def calculate(candidates: List[collocation], max_len: int) -> List[params]:
                         nested_freq=data.nested_freq + candidate.freq,
                         nested_inclusions=data.nested_inclusions + 1
                     )
+    logging.info("Стадия 1 завершена")
 
     for candidate in other_candidates:
         occurrences = [sub[0] for sub in enumerate(term_substrings) if sub[1].name == candidate.collocation]   # we may already have it in the list
@@ -115,7 +120,7 @@ def calculate(candidates: List[collocation], max_len: int) -> List[params]:
                             nested_freq=data.freq + candidate.freq - pta,
                             nested_inclusions=data.nested_inclusions + 1))
 
-    logging.info("Подсчет cvalue закончен, сортировка и выход")
+    logging.info("Подсчет cvalue закончен (терминов: {0}), сортировка и выход".format(len(terms)))
     terms = sort_by_cvalue(terms)
     return terms
 

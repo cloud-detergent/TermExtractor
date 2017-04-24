@@ -41,8 +41,9 @@ def calculate(candidates: List[collocation], dictionary: List[TaggedWord]) -> Li
             else:
                 longer_terms = get_longer_terms(ngram, longer_grams, dictionary)
 
-            if len(longer_terms) > 0:
-                logger.info("Более длинные термины, содержащие рассматриваемый: {0} -> {1}".format(longer_terms, ngram.collocation))
+            # if len(longer_terms) > 0:
+            #    logger.info("Более длинные термины, содержащие рассматриваемый: {0} -> {1}".format(longer_terms, ngram.collocation))
+            # TODO suppressed log info message
 
             if len(longer_terms) == 0:
                 if is_beyond_threshold(ngram):
@@ -60,6 +61,8 @@ def calculate(candidates: List[collocation], dictionary: List[TaggedWord]) -> Li
                             longer_grams.remove(longer_term)
                             candidates.remove(longer_term)
 
+    logger.info("Список терминов сформирован, элементов: {0}. Сортировка впереди".format(len(result_list)))
+    result_list = list(set(result_list))
     result_list = sorted(result_list, key=itemgetter(2), reverse=True)
     logger.info("Список терминов сформирован, элементов: {0}".format(len(result_list)))
     return result_list

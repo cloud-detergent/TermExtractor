@@ -5,6 +5,7 @@ from ITermExtractor.Structures.WordStructures import TaggedWord, collocation
 import helpers
 from typing import List, Tuple  # TODO PEP 484 & type checks
 import logging
+import traceback
 
 LENGTH_LIMIT_PER_PROCESS = 200
 __MorphAnalyzer__ = pymorphy2.MorphAnalyzer()
@@ -122,9 +123,10 @@ def get_main_word(collocation: List[TaggedWord]) -> str:
     ValueError: Словосочетания с глаголами и наречиями не поддерживаются
     """
     # TODO удаление whitespace'ов
-    if not isinstance(collocation, list) or len(collocation) == 0 or False in [isinstance(word, TaggedWord) for word in
-                                                                               collocation]:
-        raise TypeError("Необходим список слов с тегами")
+    check_list = [isinstance(word, TaggedWord) for word in collocation]
+    if not isinstance(collocation, list) or len(collocation) == 0 or False in check_list:
+        return ""
+        # raise TypeError("Необходим список слов с тегами")  # TODO exception
 
     pos = [word.pos for word in collocation]
     # TODO пока отрабатывать лишь словосочетания сущ+сущ и прил+сущ
@@ -233,8 +235,8 @@ def is_identical_collocation_q(collocation1: List[TaggedWord], collocation2: Lis
 
     if not (isinstance(collocation1, list) and isinstance(collocation2, list)):  # List[TaggedWord]
         raise TypeError("Ошибка типов. Необходимы словосочетания упакованные в List[TaggedWord]")
-    if len(collocation1) <= 1 or len(collocation2) <= 1:
-        raise ValueError("Необходимы словосочетания")
+    if len(collocation1) < 1 or len(collocation2) < 1:  # TODO condition
+        raise ValueError("Необходимы словосочетания:\n {0} ({1})\n {2} ({3})".format(collocation1, len(collocation1), collocation2, len(collocation2)))
 
     if collocation1 == collocation2:
         return True
@@ -381,8 +383,15 @@ def tag_collocation(collocation: str) -> List[TaggedWord]:
     tagged_words = []  # боевая деятельность и все проявления
     for word in words:
         parse_info = __MorphAnalyzer__.parse(word)[0]
-        pos = POSNameConverter.to_enum(str(parse_info.tag.POS))
-        case = CaseNameConverter.to_enum(str(parse_info.tag.case))
+        try:
+            pos = POSNameConverter.to_enum(str(parse_info.tag.POS))
+            case = CaseNameConverter.to_enum(str(parse_info.tag.case))
+        except ValueError as e:
+            logging.error("Ошибка при распознании словоформы слова \"{0}\", [{1}, {2}]\n{3}".format(word, pos, case, e))
+            if pos is "":
+                continue
+            if case is None:
+                case = Case.none
         normalized = parse_info.normal_form
         tagged_words.append(TaggedWord(word=word, pos=pos, case=case, normalized=normalized))
 
@@ -404,6 +413,8 @@ def get_collocation_normal_form(collocations: List[List[TaggedWord]]) -> int:
     index = -1
     for i in range(len(collocations)):
         main_word = get_main_word(collocations[i])
+        if main_word == '':
+            continue
         main_word_tagged_l = [word for word in collocations[i] if word.word == main_word]
         main_word_tagged = main_word_tagged_l[0] if len(main_word_tagged_l) > 0 else None
         if main_word_tagged is not None and (main_word_tagged.case == Case.nominative or main_word_tagged.word == main_word_tagged.normalized):
@@ -466,7 +477,9 @@ def get_longer_terms(line: collocation, longer_grams: List[collocation], diction
         try:
             id_check = [is_identical_collocation_q(tagged_line, l) for l in tagged_possible_identic_lines]
         except Exception as e:
-            logging.error("Ошибка при проверке {0} и {1},\n а именно {2}".format(line, gram, e))
+            # logging.error("Ошибка при проверке {0} и {1},\n а именно {2}".format(line, gram, e))2
+            # TODO suppressed log output
+            # TODO use traceback module
             continue
         if True in id_check:
             longer_terms.append(gram)

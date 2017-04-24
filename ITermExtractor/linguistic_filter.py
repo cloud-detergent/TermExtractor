@@ -7,6 +7,7 @@ from operator import itemgetter
 from ITermExtractor.Structures.WordStructures import collocation, TaggedWord
 import multiprocessing
 import logging
+import logger_settings
 
 LIMIT_PER_PROCESS = 80
 # TODO общие структуры вынести в отдельный модуль
@@ -33,7 +34,8 @@ class LinguisticFilter(object):
         if len(sentences) == 0:
             return []
         total_count = len(sentences)
-        logger = logging.getLogger()
+        logger = logging.getLogger()  # TODO log magic
+        # logger = logger_settings.get_logger()
         logger.info("Фильтрация фильтром {0}".format(str(type(self))))
         logger.info("Всего предложений {0}".format(total_count))
         for sentence in sentences:
@@ -92,7 +94,14 @@ class LinguisticFilter(object):
         for word_count in range(max_wlimit, min_wlimit - 1, -1):
             for i in range(0, len(sentence) - word_count + 1):  # извлечение словосочетаний, длиной от 2 слов и более
                 candidate_term = sentence[i:i+word_count]
+
+                for word in candidate_term:
+                    if len(word[0]) == 1 or "/" in word[0]:
+                        candidate_term.remove(word)
+
                 candidate_term_collocation = ' '.join([word[0] for word in candidate_term])
+                if candidate_term_collocation.isupper():
+                    candidate_term_collocation = candidate_term_collocation.lower()
 
                 already_existing_indices = [i for i, term in enumerate(self._candidate_terms_)
                             if term.collocation.lower() == candidate_term_collocation.lower()]
@@ -315,8 +324,11 @@ def conjugate(word_dict: Dict[str, TaggedWord], candidates_list: List[collocatio
     # todo отсеивать словосочетания со словом в 1 букву
 
     joined_form_list = []
-    local_sorted_key_list = [([word_dict[word] for word in term.collocation.split(" ")])
+    local_sorted_key_list = [([word_dict.get(word, None) for word in term.collocation.split(" ")])
                              for term in candidates_list]
+
+    # if None in local_sorted_key_list:
+    local_sorted_key_list = list(filter(lambda a: a is not None, local_sorted_key_list))
 
     for key_tag in local_sorted_key_list:
         element_matches = m.count_includes(key_tag, local_sorted_key_list)
@@ -332,6 +344,8 @@ def conjugate(word_dict: Dict[str, TaggedWord], candidates_list: List[collocatio
 
             base_key = local_sorted_key_list[base_index]
             if base_key not in joined_form_list:
+                if None in base_key:
+                    continue
                 remaining_keys = [element[0] for element in element_matches
                                   if element[0] != base_index]
                 col = ' '.join([key.word for key in base_key])

@@ -45,8 +45,10 @@ class CaseNameConverter(object):
         if not case in cache.values():
             draft = case[:3]
             similar = [cache_case for cache_case in cache.values() if cache_case.startswith(draft)]
-            if len(similar) == 0:
-                raise ValueError('Не допустимое значение аргумента')
+            if case == "voct":  # TODO звательный vocative падеж
+                similar = ['nomn']
+            elif len(similar) == 0:
+                raise ValueError('Не допустимое значение аргумента [{0}, {1}]'.format(case, draft))
             case = similar[0]
         result = ""
         for key in cache.keys():
