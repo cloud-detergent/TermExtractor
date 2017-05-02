@@ -1,5 +1,5 @@
 from ITermExtractor.linguistic_filter import (NounPlusLinguisticFilter, AdjNounLinguisticFilter, AdjNounReducedLinguisticFilter)
-from ITermExtractor.linguistic_filter import collocation
+from ITermExtractor.linguistic_filter import Collocation
 from ITermExtractor.stoplist import StopList
 from TextImporter import (DefaultTextImporter, PlainTextImporter, PdfTextImporter)
 from typing import List
@@ -15,7 +15,7 @@ import ITermExtractor.stat.kfactor as kfactor
 import pickle
 
 
-def save_text_raw_terms(filename: str, input_list: List[collocation]):
+def save_text_raw_terms(filename: str, input_list: List[Collocation]):
     with open(file=filename, mode="wt", encoding="utf-8") as f:
         data = []
         for line in input_list:
@@ -23,16 +23,16 @@ def save_text_raw_terms(filename: str, input_list: List[collocation]):
         f.writelines(data)
 
 
-def open_raw_terms(filename: str) -> List[collocation]:
+def open_raw_terms(filename: str) -> List[Collocation]:
     result_list = []
     with open(file=filename, mode="rt", encoding="utf-8") as f:
         data = f.readlines()
         for line in data:
             parts = line.split(" = ")
             wordcount = len(parts[0].split(' '))
-            result_list.append(collocation(collocation=parts[0],
-                        wordcount=wordcount,
-                        freq=float(parts[1])))
+            result_list.append(Collocation(collocation=parts[0],
+                                           wordcount=wordcount,
+                                           freq=float(parts[1])))
     return result_list
 
 
@@ -107,7 +107,7 @@ if __name__ == "__main__":
     # logger = logger_settings.get_logger()
     logger.info("\n============================================Запуск==============================================\n")
 
-    choice_single_thread = input_menu("Обрабатывать данные в одном потоке?", ["Да", "Нет"]) == 1
+    # choice_single_thread = input_menu("Обрабатывать данные в одном потоке?", ["Да", "Нет"]) == 1
 
     choice_tag_cache_read = input_menu("Использовать предыдущие данные морфологического анализа ?", ["Да", "Нет"]) == 1
     if not choice_tag_cache_read:
@@ -185,13 +185,13 @@ if __name__ == "__main__":
     if USE_FILTER_1 and RERUN_FILTER_1:
         logger.info("Фильтр 1: Начало")
         filter1 = NounPlusLinguisticFilter()
-        terms1 = filter1.filter_text(tagged_sentence_list, choice_single_thread)
+        terms1 = filter1.filter_text(tagged_sentence_list)
         logger.info("Фильтр 1: список терминов извлечен")
 
     if USE_FILTER_2 and RERUN_FILTER_2:
         logger.info("Фильтр 2: Начало")
         filter2 = AdjNounLinguisticFilter()
-        terms2 = filter2.filter_text(tagged_sentence_list, choice_single_thread)
+        terms2 = filter2.filter_text(tagged_sentence_list)  # choice_single_thread
         logger.info("Фильтр 2: список терминов извлечен")
 
     if choice_stoplist:
@@ -219,12 +219,12 @@ if __name__ == "__main__":
     cvalue.set_dictionary(dictionary)
     track_time("cvalue")
     if USE_FILTER_1 and USE_CVALUE_1:
-        max_1 = max(filtered_terms1, key=itemgetter(1)).wordcount
+        max_1 = max(filtered_terms1, key=itemgetter('wordcount')).wordcount
         logger.info("Переход к подчету, фильтр 1, к обработке {0}".format(len(filtered_terms1)))
         cvalue_res_1 = cvalue.calculate(filtered_terms1, max_1)
     track_time("cvalue")
     if USE_FILTER_2 and USE_CVALUE_2:
-        max_2 = max(filtered_terms2, key=itemgetter(1)).wordcount
+        max_2 = max(filtered_terms2, key=itemgetter('wordcount')).wordcount
         logger.info("Переход к подчету, фильтр 2, к обработке {0}".format(len(filtered_terms2)))
         cvalue_res_2 = cvalue.calculate(filtered_terms2, max_2)
     track_time("cvalue")

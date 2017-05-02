@@ -4,7 +4,7 @@ import os
 from typing import List
 from operator import itemgetter
 from helpers import remove_spans
-from ITermExtractor.Structures.WordStructures import collocation
+from ITermExtractor.Structures.WordStructures import Collocation
 
 
 class StopList(object):
@@ -79,7 +79,7 @@ class StopList(object):
         infolist = list(re.finditer(self._Pattern, text, re.IGNORECASE))
         return infolist
 
-    def filter(self, candidate_terms: List[collocation]) -> List[collocation]:
+    def filter(self, candidate_terms: List[Collocation]) -> List[Collocation]:
         """
         Фильтрует список терминологических кандидатов в соответствии со стоп-списком
         :param candidate_terms: словарь со списком словосочетаний и частотой их встречаемости
@@ -90,7 +90,7 @@ class StopList(object):
 
         """
         # TODO удалять из списка при нахождении стоп-слова, не соединять термины
-        flag = False in [isinstance(term, collocation) for term in candidate_terms]
+        flag = False in [isinstance(term, Collocation) for term in candidate_terms]
         if flag:
             raise ValueError("Необходим список терминов с частотой встречаемости")
         if len(self._List_) == 0:
@@ -108,13 +108,13 @@ class StopList(object):
                     if len(existing_nodes) == 0:
                         if len(edited_term.split(' ')) > 1:
                             edited_terms.append(
-                                collocation(collocation=edited_term,
+                                Collocation(collocation=edited_term,
                                             freq=term.freq,
                                             wordcount=len(edited_term.split(' '))))
                     else:
                         node = existing_nodes[0]
                         edited_terms.append(
-                            collocation(collocation=node.collocation,
+                            Collocation(collocation=node.collocation,
                                         freq=term.freq + node.freq,
                                         wordcount=node.wordcount))
                         edited_terms.remove(node)
@@ -193,11 +193,11 @@ if __name__ == "__main__":
     sl = StopList(use_settings=False)
     sl.append_list(["раздел", "УТВЕРЖДАЮ", "подпись", "г"])  # TODO а будет ли удаляться строка (подпись)?
     str_list = [
-        collocation(collocation="трехэтажный дом", wordcount=2, freq=2),
-        collocation(collocation="трехэтажный раздельный дом", wordcount=3, freq=1),
-        collocation(collocation="артиллерийский огонь", wordcount=2, freq=5),
-        collocation(collocation="наступление года", wordcount=2, freq=5),
-        collocation(collocation="январь г", wordcount=2, freq=5)
+        Collocation(collocation="трехэтажный дом", wordcount=2, freq=2),
+        Collocation(collocation="трехэтажный раздельный дом", wordcount=3, freq=1),
+        Collocation(collocation="артиллерийский огонь", wordcount=2, freq=5),
+        Collocation(collocation="наступление года", wordcount=2, freq=5),
+        Collocation(collocation="январь г", wordcount=2, freq=5)
     ]
     doctest.testmod(extraglobs=
                     {'sl': sl,

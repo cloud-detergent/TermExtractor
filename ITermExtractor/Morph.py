@@ -1,7 +1,9 @@
+from operator import itemgetter
+import re
 import pymorphy2
 from ITermExtractor.Structures.PartOfSpeech import PartOfSpeech, POSNameConverter
 from ITermExtractor.Structures.Case import Case, CaseNameConverter
-from ITermExtractor.Structures.WordStructures import TaggedWord, collocation
+from ITermExtractor.Structures.WordStructures import TaggedWord, Collocation
 import helpers
 from typing import List, Tuple  # TODO PEP 484 & type checks
 import logging
@@ -129,9 +131,9 @@ def get_main_word(collocation: List[TaggedWord]) -> str:
         # raise TypeError("Необходим список слов с тегами")  # TODO exception
 
     pos = [word.pos for word in collocation]
-    # TODO пока отрабатывать лишь словосочетания сущ+сущ и прил+сущ
+
     flag = not (PartOfSpeech.verb in pos and PartOfSpeech.adverb in pos)
-    if not flag:
+    if not flag:  # TODO пока отрабатывать лишь словосочетания сущ+сущ и прил+сущ
         raise ValueError("Словосочетания с глаголами и наречиями не поддерживаются")
 
     result = ""
@@ -364,41 +366,64 @@ def count_includes(collocation: List[TaggedWord], collocation_list: List[List[Ta
     return found_matches
 
 
-def tag_collocation(collocation: str) -> List[TaggedWord]:
+def tag_word(word: str) -> TaggedWord:
     """
+    Слову ставит в соответствие тег
+    :param word: исходное слово
+    :return: слово + тег
+    """
+    is_word_valid = word.isalpha() or word.find('-') > 0
+    validity_check = is_word_valid
+    reg_word_symbols = '[a-zA-Zа-яА-Я-]{2,}'
+    if not is_word_valid:
+        symbol_check = [symbol.isalpha() or symbol == '-' for symbol in word]
+        validity_check = symbol_check.count(True) / len(symbol_check) >= 0.7
+        if validity_check:
+            parts = re.findall(reg_word_symbols, word)
+            validity_check = len(parts) == 1
+            word = parts[0]
+
+    if not validity_check:
+        return None
+
+    parse_info = __MorphAnalyzer__.parse(word)
+    base_element = parse_info[0]
+    if len(parse_info) > 1:
+        max_match_score = max(parse_info, key=itemgetter(3)).score
+        max_score_elements = list(filter(lambda x: x.score == max_match_score, parse_info))
+        include_same_pos = all([element.tag.POS == base_element.tag.POS for element in max_score_elements])
+        if len(max_score_elements) > 1 and not include_same_pos:
+            max_score_elements = list(sorted(parse_info, key=itemgetter(1)))  # 'tag'
+            base_element = max_score_elements[0]
+
+    try:
+        pos = POSNameConverter.to_enum(str(base_element.tag.POS))
+        case = CaseNameConverter.to_enum(str(base_element.tag.case))
+        normalized = base_element.normal_form
+    except ValueError as e:
+        logging.error("Ошибка при распознании словоформы слова \"{0}\", [{1}, {2}]\n{3}".format(word, pos, case, e))
+        if pos is "":
+            return None
+        if case is None:
+            case = Case.none
+    result = TaggedWord(word=word, pos=pos, case=case, normalized=normalized)
+    return result
+
+
+def tag_collocation(collocation: str) -> List[TaggedWord]:
+    """*
     Присваивает каждому слову в словосочетании метки части речи и падежа
     :param collocation: словосочетание
     :return: размеченный список слов
-
-    >>> tag_collocation('огонь артиллерии')
-    [TaggedWord(word='огонь', pos=<PartOfSpeech.noun: (1, 'S существительное (яблоня, лошадь, корпус, вечность)')>, case=<Case.nominative: (1, 'именительный')>, normalized='огонь'), TaggedWord(word='артиллерии', pos=<PartOfSpeech.noun: (1, 'S существительное (яблоня, лошадь, корпус, вечность)')>, case=<Case.genitive: (2, 'родительный')>, normalized='артиллерия')]
-
-    >>> tag_collocation('парково-хозяйственный день') # отчего-то слово день определяется как слово в винительном падеже
-    [TaggedWord(word='парково-хозяйственный', pos=<PartOfSpeech.adjective: (3, 'A  прилагательное (коричневый, таинственный, морской)')>, case=<Case.nominative: (1, 'именительный')>, normalized='парково-хозяйственный'), TaggedWord(word='день', pos=<PartOfSpeech.noun: (1, 'S существительное (яблоня, лошадь, корпус, вечность)')>, case=<Case.accusative: (4, 'винительный')>, normalized='день')]
-
-    >>> tag_collocation('слушать громко')
-    [TaggedWord(word='слушать', pos=<PartOfSpeech.verb: (2, 'V глагол (пользоваться, обрабатывать)')>, case=<Case.none: (0,)>, normalized='слушать'), TaggedWord(word='громко', pos=<PartOfSpeech.adverb: (4, 'ADV наречие (сгоряча, очень)')>, case=<Case.none: (0,)>, normalized='громко')]
     """
     words = collocation.split()
-    tagged_words = []  # боевая деятельность и все проявления
+    tagged_words = []
     for word in words:
-        parse_info = __MorphAnalyzer__.parse(word)[0]
-        try:
-            pos = POSNameConverter.to_enum(str(parse_info.tag.POS))
-            case = CaseNameConverter.to_enum(str(parse_info.tag.case))
-        except ValueError as e:
-            logging.error("Ошибка при распознании словоформы слова \"{0}\", [{1}, {2}]\n{3}".format(word, pos, case, e))
-            if pos is "":
-                continue
-            if case is None:
-                case = Case.none
-        normalized = parse_info.normal_form
-        tagged_words.append(TaggedWord(word=word, pos=pos, case=case, normalized=normalized))
+        tagged_word = tag_word(word)
+        if tagged_word is not None:
+            tagged_words.append(tagged_word)
 
     return tagged_words
-
-
-# TODO на некоторые слова pymorphy дает несколько вариантов с одинаковыми вероятностями, метод определения?
 
 
 def get_collocation_normal_form(collocations: List[List[TaggedWord]]) -> int:
@@ -455,7 +480,7 @@ def make_substrs(collocation: str) -> List[str]:  # TODO а почему арт�
     return substrings
 
 
-def get_longer_terms(line: collocation, longer_grams: List[collocation], dictionary: List[TaggedWord]) -> List[collocation]:
+def get_longer_terms(line: Collocation, longer_grams: List[Collocation], dictionary: List[TaggedWord]) -> List[Collocation]:
     """
     Возвращает перечень кандидатов, в которых содержится строка line
     :param line:
@@ -463,9 +488,9 @@ def get_longer_terms(line: collocation, longer_grams: List[collocation], diction
     :param dictionary:
     :return:
 
-    >>> grams = [collocation(collocation='распределение построения боевых', wordcount=3, freq=1), collocation(collocation='построения боевых порядков', wordcount=3, freq=1), collocation(collocation='распределение построения', wordcount=2, freq=1), collocation(collocation='распределение построения боевых порядков', wordcount=4, freq=1)]
+    >>> grams = [Collocation(collocation='распределение построения боевых', wordcount=3, freq=1), Collocation(collocation='построения боевых порядков', wordcount=3, freq=1), Collocation(collocation='распределение построения', wordcount=2, freq=1), Collocation(collocation='распределение построения боевых порядков', wordcount=4, freq=1)]
     >>> dictionary = [TaggedWord(word='построения', pos=PartOfSpeech.noun, case=Case.genitive, normalized='построениe'), TaggedWord(word='боевых', pos=PartOfSpeech.adjective, case=Case.genitive, normalized='боевой'), TaggedWord(word='порядков', pos=PartOfSpeech.noun, case=Case.genitive, normalized='порядок'), TaggedWord(word='распределение', pos=PartOfSpeech.noun, case=Case.nominative, normalized='распределение'), TaggedWord(word='боевой', pos=PartOfSpeech.noun, case=Case.nominative, normalized='боевой'), TaggedWord(word='порядок', pos=PartOfSpeech.noun, case=Case.nominative, normalized='порядок')]
-    >>> get_longer_terms(collocation(collocation='боевой порядок', wordcount=2, freq=1), grams, dictionary)
+    >>> get_longer_terms(Collocation(collocation='боевой порядок', wordcount=2, freq=1), grams, dictionary)
     [collocation(collocation='построения боевых порядков', wordcount=3, freq=1), collocation(collocation='распределение построения боевых порядков', wordcount=4, freq=1)]
     """
     tagged_line = assign_tags(line, dictionary)
@@ -486,7 +511,7 @@ def get_longer_terms(line: collocation, longer_grams: List[collocation], diction
     return longer_terms
 
 
-def assign_tags(phrase: str or collocation, dictionary: List[TaggedWord]) -> List[TaggedWord]:
+def assign_tags(phrase: str or Collocation, dictionary: List[TaggedWord]) -> List[TaggedWord]:
     """
     Распределяет теги из словаря словам из словосочетания
     :param phrase:
@@ -498,7 +523,7 @@ def assign_tags(phrase: str or collocation, dictionary: List[TaggedWord]) -> Lis
 
     """
     # TODO дубликаты c большим словарем
-    if not (isinstance(phrase, str) or isinstance(phrase, collocation)):
+    if not (isinstance(phrase, str) or isinstance(phrase, Collocation)):
         raise TypeError("Передан аргумент неверного типа")
     is_str = isinstance(phrase, str)
     if is_str:

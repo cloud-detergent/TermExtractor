@@ -1,4 +1,4 @@
-from ITermExtractor.Structures.WordStructures import collocation, TaggedWord
+from ITermExtractor.Structures.WordStructures import Collocation, TaggedWord
 from typing import List
 from operator import itemgetter
 from ITermExtractor.Morph import make_substrs, is_identical_collocation_q, get_longer_terms, assign_tags
@@ -9,12 +9,12 @@ KFACTOR = 0.7
 THRESHOLD = {2: 0, 3: 0, 4: 0, 5: 0}
 
 
-def is_beyond_threshold(phrase: collocation) -> bool:
+def is_beyond_threshold(phrase: Collocation) -> bool:
     result = phrase.freq >= THRESHOLD[phrase.wordcount]
     return result
 
 
-def calculate(candidates: List[collocation], dictionary: List[TaggedWord]) -> List[collocation]:
+def calculate(candidates: List[Collocation], dictionary: List[TaggedWord]) -> List[Collocation]:
     logger = logging.getLogger()
     result_list = []
     logger.info("Начало статистической проверки ")

@@ -4,7 +4,7 @@ from ITermExtractor.Morph import is_identical_word, make_substrs, get_longer_ter
 from typing import List
 from operator import itemgetter
 import logging
-from ITermExtractor.Structures.WordStructures import collocation
+from ITermExtractor.Structures.WordStructures import Collocation
 from ITermExtractor.Structures.WordStructures import TaggedWord
 
 params = namedtuple('params', ['name', 'cvalue'])
@@ -28,18 +28,20 @@ class LinguisticContainer(object):
         return self.__dictionary__
 
 
-def calculate(candidates: List[collocation], max_len: int) -> List[params]:
+def calculate(candidates: List[Collocation], max_len: int) -> List[params]:
     """
     Подсчитывает c-value для списка терминологических кандидатов
     :param candidates: список терминологических кандидатов  collocation_tuple('словосочетание', 'число слов', 'частота')
     :param max_len: максимальное значение количества слов в списке
     :return: список терминов со значениями c-value
     """
+
+    # TODO заменить применение make_substrs на llinked
     terms = []
     term_substrings = []
     max_len_candidates = [candidate for candidate in candidates if candidate.wordcount == max_len]
     other_candidates = [candidate for candidate in candidates if candidate.wordcount < max_len]
-    # other_candidates = candidates - max_len_candidates # retract union
+    candidates_dict = dict([(c.id, c) for c in candidates])
 
     logging.info("Всего словосочетаний: {0}, из них максимальной длины - {1}, других - {2}"
                  .format(len(candidates), len(max_len_candidates), len(other_candidates)))
@@ -73,6 +75,8 @@ def calculate(candidates: List[collocation], max_len: int) -> List[params]:
 
             if cval > THRESHOLD:
                 terms.append(params(name=candidate.collocation, cvalue=cval))
+                # for linked_id in candidate.llinked:
+                #    candidates_dict[linked_id]
                 substrs = make_substrs(candidate.collocation)
                 for substr in substrs:
                     # TODO check if they exist
@@ -102,7 +106,7 @@ def calculate(candidates: List[collocation], max_len: int) -> List[params]:
             if cval > THRESHOLD:
                 terms.append(params(name=candidate.collocation, cvalue=cval))
 
-                substrs = make_substrs(candidate.collocation)
+                substrs = make_substrs(candidate.collocation)  # TODO заменить на использование обновленного Collocation
                 for substr in substrs:
                     # TODO check if they exist
                     occurrences = [sub[0] for sub in enumerate(term_substrings) if sub[1].name == substr]
@@ -131,7 +135,7 @@ def sort_by_cvalue(input_list: List[params]) -> List[params]:
 # term_substrings += [params_substr(name= substr, freq= calculate_nested_params(substr, candidates), nested_freq=1) for substr in substrs]
 
 
-def get_total_freq(line: collocation, candidates: List[collocation]) -> int:
+def get_total_freq(line: Collocation, candidates: List[Collocation]) -> int:
     global linguistic_container
     longer_terms = get_longer_terms(line, candidates, linguistic_container.get_dictionary())
     not_nested_freq = sum(candidate.freq for candidate in longer_terms)
