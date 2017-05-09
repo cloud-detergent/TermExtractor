@@ -3,11 +3,13 @@ import helpers
 import ITermExtractor.Morph as m
 import multiprocessing
 import logging
+import copy
 from ITermExtractor.Structures.PartOfSpeech import PartOfSpeech
 from typing import List, Dict, Tuple
 from operator import itemgetter
 from ITermExtractor.Structures.WordStructures import Collocation, TaggedWord
 from itertools import groupby
+from ITermExtractor.Tests.linguistic_filter import is_integral
 
 LIMIT_PER_PROCESS = 80
 # TODO общие структуры вынести в отдельный модуль
@@ -24,6 +26,7 @@ class LinguisticFilter(object):
 
     _limit = 5; """Магическое значение максимальной длины термина, выраженной в количестве слов"""
 
+    # TODO на каком-то этапе валится целостность по ссылкам. Заменяются?
     def filter_text(self, sentences: List[List[TaggedWord]], is_single_threaded: bool = False) -> List[Collocation]:
         """
         Извлечение терминологических кандидатов из текста, разбитого на предложения
@@ -51,18 +54,13 @@ class LinguisticFilter(object):
         candidate_terms = concatenate_similar(tag_cache, candidate_terms)
         # corrected_candidate_terms = parallel_conjugation(dict(tag_cache), candidate_terms, is_single_threaded)
         logger.info("Перечень терминологических кандидатов построен (всего {1}/{0})".format(prev_length, len(candidate_terms)))
+
         logger.info("Расставляем ссылки, вложенные термины")
         candidate_terms = define_collocation_links(candidate_terms)
         logger.info("Сортировка результата по длине словосочетания")
-        candidate_terms = sorted(candidate_terms, key=itemgetter('wordcount'))
-        # corrected_candidate_terms = LinguisticFilter.sort_by_wordcount(corrected_candidate_terms)
+        candidate_terms = sorted(candidate_terms, key=itemgetter('wordcount'), reverse=True)
         logger.info("Список отсортирован")
         return candidate_terms
-
-    @staticmethod
-    def sort_by_wordcount(input_list: List[Collocation]) -> List[Collocation]:
-        result = sorted(input_list, key=itemgetter('wordcount'), reverse=True)
-        return result
 
     def filter(self, sentence: List[TaggedWord]) -> List[Collocation]:
         """
@@ -290,6 +288,12 @@ if __name__ == "__main__":
     '''
 
 
+def set_ids(collocations: List[Collocation]) -> List[Collocation]:
+    for collocation in collocations:
+        collocation.id = id(collocation)
+    return collocations
+
+
 def concatenate_similar(word_dict: Dict[str, TaggedWord], collocations: List[Collocation]) -> List[Collocation]:
     """
     http://stackoverflow.com/a/3749740 - группировка
@@ -298,6 +302,7 @@ def concatenate_similar(word_dict: Dict[str, TaggedWord], collocations: List[Col
     :param collocations: полученные прежде словосочетания
     :return: список словосочетания, соединенных в одну словоформу
     """
+    collocations = set_ids(collocations)
     grouped_collocations = {}
     collocations = sorted(collocations, key=itemgetter('pnormal_form'))
     for key, value_sitter in groupby(collocations, key=itemgetter('pnormal_form')):
@@ -312,11 +317,12 @@ def concatenate_similar(word_dict: Dict[str, TaggedWord], collocations: List[Col
             index = m.get_collocation_normal_form(tagged_collocations)
             updated_freq = sum([c.freq for c in c_vars])
             c_vars[index].freq = updated_freq
-        c_vars[index].id = id(c_vars[index])
+        # c_vars[index].id = id(c_vars[index])
         final_list.append(c_vars[index])
     return final_list
 
 
+# TODO или в отдельный модуль
 def define_collocation_links(collocations: List[Collocation]) -> List[Collocation]:
     """
     Определение списка более длинных словосочетаний
@@ -325,8 +331,9 @@ def define_collocation_links(collocations: List[Collocation]) -> List[Collocatio
     """
     grouped_by_len = {}
     lengths = []
-    sorted_collocations = sorted(list(collocations), key=itemgetter('wordcount'))
-    collocations_dict = dict([(c.id, c) for c in collocations])
+    cloned = copy.deepcopy(collocations)
+    sorted_collocations = sorted(cloned, key=itemgetter('wordcount'))
+    collocations_dict = dict([(c.id, c) for c in sorted_collocations])
 
     for key, value_sitter in groupby(sorted_collocations, key=itemgetter('wordcount')):
         grouped_by_len[key] = list(value_sitter)
@@ -344,6 +351,7 @@ def define_collocation_links(collocations: List[Collocation]) -> List[Collocatio
     return list(collocations_dict.values())
 
 
+# TODO obsolete
 def parallel_conjugation(word_dict: Dict[str, TaggedWord], candidate_list: List[Collocation],
                          is_single_threaded: bool = False) -> List[Collocation]:
     logging.info("Разделяем на потоки")
@@ -361,7 +369,7 @@ def parallel_conjugation(word_dict: Dict[str, TaggedWord], candidate_list: List[
     logging.debug("Готовы результаты обработки")
     return grouped_result
 
-# TODO adj\noun фильтр, collocation вперемешку с TaggedWord, как?
+# TODO adj-noun фильтр, collocation вперемешку с TaggedWord, как?
 
 
 def conjugate(word_dict: Dict[str, TaggedWord], candidates_list: List[Collocation]) -> List[Collocation]:

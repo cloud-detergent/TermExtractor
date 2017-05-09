@@ -1,7 +1,10 @@
 from ITermExtractor.Structures.WordStructures import Collocation
 from ITermExtractor.linguistic_filter import *
+from TextImporter import PlainTextImporter
 import ITermExtractor.Morph as m
 import unittest
+import Runner
+import os
 
 
 class TestLinguisticFilter(unittest.TestCase):
@@ -64,9 +67,67 @@ class TestLinguisticFilter(unittest.TestCase):
         result = concatenate_similar(tag_cache, collocations)
         linked_result = define_collocation_links(result)
         self.assertEqual(sorted(result, key=itemgetter('collocation')), sorted(expected_results, key=itemgetter('collocation')))
-        # self.assertCountEqual()
 
+        self.assertCountEqual(result, linked_result)
+        self.assertEqual(sorted(result, key=itemgetter('wordcount')), linked_result)
+
+    def test_integrity_small(self):
+        sentences = ['Огонь артиллерии планировать в соответствии с обеспеченностью боеприпасами',
+                     'Подготовленные участки и огни артиллерии записывать на щитах орудий, таблицах за брусом, имея все необходимые данные для ведения огня артиллерии ночью и в условиях задымления',
+                     'Система огня должна обеспечить непроницаемость боевых порядков для контратак пехоты противника и танков'
+                     ]
+        tag_info = [m.tag_collocation(s) for s in sentences]
+        filter1 = NounPlusLinguisticFilter()
+        collocations = filter1.filter_text(tag_info)
+        result_with_links = list(filter(lambda x: len(x.llinked) > 0, collocations))
+        result_dict = dict([(r.id, r) for r in collocations])
+        link_integrity_checks = [all(link in result_dict for link in p.llinked) for p in result_with_links]
+        self.assertTrue(all(link_integrity_checks))
+
+    def test_integrity_big(self):
+        text_importer = PlainTextImporter(os.path.join('..', '..', 'data', 'input_text.txt'))
+        input_text = text_importer.get_text()
+        tag_info = Runner.parse_text(input_text)
+
+        filter1 = NounPlusLinguisticFilter()
+        collocations = filter1.filter_text(tag_info)
+        result_with_links = list(filter(lambda x: len(x.llinked) > 0, collocations))
+
+        result_dict = dict([(r.id, r) for r in collocations])
+        # self.assertEqual(sorted(collocations, key=itemgetter('id')), sorted(result_with_links, key=itemgetter('id')))
+        link_integrity_checks = [all(link in result_dict for link in p.llinked) for p in result_with_links]
+        self.assertTrue(all(link_integrity_checks))
+
+    def test_link_definer(self):
+        text_importer = PlainTextImporter(os.path.join('..', '..', 'data', 'input_text.txt'))
+        filter1 = NounPlusLinguisticFilter()
+        input_text = text_importer.get_text()
+        tag_info = Runner.parse_text(input_text)
+        collocations = []
+
+        for t in tag_info:
+            fc = filter1.filter(t)
+            collocations = collocations + fc
+
+        tag_cache = dict([(word.word.lower(), word) for s in tag_info for word in s])
+        result = concatenate_similar(tag_cache, collocations)
+        linked_result = define_collocation_links(result)
+        self.assertEqual(sorted(result, key=itemgetter('wordcount')), linked_result)
+
+        result_with_links = list(filter(lambda x: len(x.llinked) > 0, linked_result))
+        result_dict = dict([(r.id, r) for r in linked_result])
+
+        link_integrity_checks = [all(link in result_dict for link in p.llinked) for p in result_with_links]
+        self.assertTrue(all(link_integrity_checks))
 #  Основная задача его заключается в непосредственной поддержке стрелковых рот и сопровождении их огнем и движением
+
+
+def is_integral(collocation_list: List[Collocation]) -> bool:
+    collocation_dict = dict([(r.id, r) for r in collocation_list])
+    collocation_with_links = list(filter(lambda x: len(x.llinked) > 0, collocation_list))
+    link_integrity_checks = [all(link in collocation_dict for link in p.llinked) for p in collocation_with_links]
+    flag = all(link_integrity_checks)
+    return flag
 
 if __name__ == "__main__":
     unittest.main()

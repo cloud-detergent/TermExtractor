@@ -1,4 +1,5 @@
 from collections import namedtuple
+from copy import deepcopy
 
 TaggedWord = namedtuple('TaggedWord', ['word', 'pos', 'case', 'normalized'])
 TaggedWord.__doc__ = "Размеченное слово"
@@ -9,12 +10,11 @@ TaggedWord.normalized.__doc__ = "Нормальная форма слова"
 
 
 class Collocation(dict):
-    # TODO логика сравнивания 2 экземпляров, без id
     """
     Словосочетание со статистическими параметрами
     """
 
-    def __init__(self, cid=0, collocation=str(), wordcount=0, freq=0, pnormal_form=str(), llinked=list()):
+    def __init__(self, collocation: str=str(), wordcount: int=0, freq: int=0, pnormal_form: str=str(), llinked: list=list(), cid: int=0):
         """
         Конструктор класса-словаря
         :param collocation: Словосочетание, строка
@@ -22,6 +22,7 @@ class Collocation(dict):
         :param freq: Количество упоминаний словоформы в исходном корпусе
         :param pnormal_form: Псевдо нормальная форма словосочетания: все слова в норм форме
         :param llinked: Список ссылок на более длинные словосочетаний / те же словоформы
+        :param cid: id
         """
         if collocation != str() and wordcount == 0:
             wordcount = len(collocation.split(' '))
@@ -43,3 +44,23 @@ class Collocation(dict):
         if attr == "collocation":
             self.wordcount = len(value.split(' '))
         self[attr] = value
+
+    def __eq__(self, other):
+        if other is None:
+            return False
+        required_attributes = ('collocation', 'wordcount', 'freq')
+        type_check = isinstance(other, Collocation) or (isinstance(other, dict) and all([attr in other for attr in required_attributes]))
+        if not type_check:
+            return False
+        equality_check = self.collocation == other.get('collocation', str()) and \
+                         self.freq == other.get('freq', -1) and \
+                         self.pnormal_form == other.get('pnormal_form', str())
+        return equality_check
+
+    def __deepcopy__(self, memodict={}):
+        cls = self.__class__
+        result = cls.__new__(cls)
+        memodict[id(self)] = result
+        for k, v in self.items():
+            setattr(result, k, deepcopy(v, memodict))
+        return result

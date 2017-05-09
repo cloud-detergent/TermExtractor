@@ -3,23 +3,23 @@ from ITermExtractor.linguistic_filter import Collocation
 from ITermExtractor.stoplist import StopList
 from TextImporter import (DefaultTextImporter, PlainTextImporter, PdfTextImporter)
 from typing import List
-from operator import itemgetter
 from ITermExtractor.Structures.WordStructures import TaggedWord
 import Runner
 import datetime
 import os
 import logger_settings
 import logging
-import ITermExtractor.stat.cvalue as cvalue
+import ITermExtractor.stat.cvalue_revisited as cvalue
 import ITermExtractor.stat.kfactor as kfactor
 import pickle
+from ITermExtractor.Tests.linguistic_filter import is_integral
 
 
 def save_text_raw_terms(filename: str, input_list: List[Collocation]):
     with open(file=filename, mode="wt", encoding="utf-8") as f:
         data = []
         for line in input_list:
-            data.append("{0} = {1}{2}".format(line.collocation, line.freq, os.linesep))
+            data.append("{0} | {1} | {2} | {3} | {4}{5}".format(line.collocation, line.freq, line.id, line.pnormal_form, '-'.join([str(l) for l in line.llinked]), os.linesep))
         f.writelines(data)
 
 
@@ -28,11 +28,13 @@ def open_raw_terms(filename: str) -> List[Collocation]:
     with open(file=filename, mode="rt", encoding="utf-8") as f:
         data = f.readlines()
         for line in data:
-            parts = line.split(" = ")
-            wordcount = len(parts[0].split(' '))
-            result_list.append(Collocation(collocation=parts[0],
-                                           wordcount=wordcount,
-                                           freq=float(parts[1])))
+            parts = line.split(" | ")
+            col = parts[0]
+            freq = float(parts[1])
+            i = int(parts[2])
+            nf = parts[3]
+            linked = [int(id) for id in parts[4].split('-')] if parts[4] != "\n" else list()
+            result_list.append(Collocation(collocation=col, freq=freq, cid=i, pnormal_form=nf, llinked=linked))
     return result_list
 
 
@@ -179,6 +181,8 @@ if __name__ == "__main__":
         logger.debug("Текст обработан, количество слов с тегами {0}".format(len(tagged_sentence_list)))
         if choice_tag_cache_write:
             save_tag_data(os.path.join('result', 'tags'), tagged_sentence_list)
+            with open(os.path.join('data', 'input_text.txt'), mode="wt") as f:
+                f.write(input_text)
             logger.info("Теги сохранены в файл")
 
     logger.debug("Начало извлечения списка терминов")
@@ -214,19 +218,17 @@ if __name__ == "__main__":
         save_text_raw_terms(os.path.join('result', 'inter-adj_noun.txt'), filtered_terms2)
     logger.info("Данные записаны")
 
-    logger.info("Подсчитываем cvalue")
     dictionary = [word for sentence in tagged_sentence_list for word in sentence]
-    cvalue.set_dictionary(dictionary)
+
+    logger.info("Подсчитываем cvalue")
     track_time("cvalue")
     if USE_FILTER_1 and USE_CVALUE_1:
-        max_1 = max(filtered_terms1, key=itemgetter('wordcount')).wordcount
         logger.info("Переход к подчету, фильтр 1, к обработке {0}".format(len(filtered_terms1)))
-        cvalue_res_1 = cvalue.calculate(filtered_terms1, max_1)
+        cvalue_res_1 = cvalue.calculate(filtered_terms1)
     track_time("cvalue")
     if USE_FILTER_2 and USE_CVALUE_2:
-        max_2 = max(filtered_terms2, key=itemgetter('wordcount')).wordcount
         logger.info("Переход к подчету, фильтр 2, к обработке {0}".format(len(filtered_terms2)))
-        cvalue_res_2 = cvalue.calculate(filtered_terms2, max_2)
+        cvalue_res_2 = cvalue.calculate(filtered_terms2)
     track_time("cvalue")
 
     logger.info("Подсчет закончен, сохраняем результаты в файл")
