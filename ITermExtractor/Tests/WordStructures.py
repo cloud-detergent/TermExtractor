@@ -1,6 +1,7 @@
 from ITermExtractor.Structures.WordStructures import Collocation
 from copy import deepcopy
 import unittest
+import pickle
 
 
 class TestCollocation(unittest.TestCase):
@@ -45,6 +46,8 @@ class TestCollocation(unittest.TestCase):
         abc = Collocation()
         abc.collocation = "огонь артиллерии"
         self.assertEqual(abc.wordcount, 2)
+        fer = Collocation(collocation="новый день", freq=3, cid=97, pnormal_form="новый день")
+        self.assertEqual(fer.wordcount, 2)
 
     def test_equality(self):
         abcd = Collocation(collocation="огонь артиллерии")
@@ -81,6 +84,13 @@ class TestCollocation(unittest.TestCase):
 
         self.assertNotEqual(a_list, a_list_copy)
         self.assertEqual(a_list, a_list_scopy)
+
+    def test_pickle_ability(self):
+        originals = [Collocation(collocation="огонь артиллерии"), Collocation("исходный корпус")]
+        packed = [pickle.dumps(o) for o in originals]
+        unpacked = [pickle.loads(p) for p in packed]
+        self.assertEqual(originals, unpacked)
+
 
 if __name__ == "__main__":
     unittest.main()

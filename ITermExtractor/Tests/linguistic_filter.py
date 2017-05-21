@@ -16,6 +16,7 @@ class TestLinguisticFilter(unittest.TestCase):
 
         expected_results = [Collocation(collocation='средством пехоты', pnormal_form='средство пехота', freq=1)]
 
+        candidates = [r for r in candidates if r.wordcount > 1]
         self.assertEqual(sorted(candidates, key=itemgetter('collocation')), sorted(expected_results, key=itemgetter('collocation')))
 
         candidates = filter2.filter(tagged_sentence)
@@ -28,6 +29,7 @@ class TestLinguisticFilter(unittest.TestCase):
                             Collocation(collocation='огневым средством пехоты', pnormal_form='огневой средство пехота', freq=1),
                             Collocation(collocation='средством пехоты', pnormal_form='средство пехота', freq=1)]
 
+        candidates = [r for r in candidates if r.wordcount > 1]
         self.assertEqual(sorted(candidates, key=itemgetter('collocation')),
                          sorted(expected_results, key=itemgetter('collocation')))
 
@@ -66,7 +68,7 @@ class TestLinguisticFilter(unittest.TestCase):
 
         result = concatenate_similar(tag_cache, collocations)
         linked_result = define_collocation_links(result)
-        self.assertEqual(sorted(result, key=itemgetter('collocation')), sorted(expected_results, key=itemgetter('collocation')))
+        self.assertEqual(sorted([r for r in result if r.wordcount > 1], key=itemgetter('collocation')), sorted(expected_results, key=itemgetter('collocation')))
 
         self.assertCountEqual(result, linked_result)
         self.assertEqual(sorted(result, key=itemgetter('wordcount')), linked_result)

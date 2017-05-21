@@ -533,3 +533,15 @@ def assign_tags(phrase: str or Collocation, dictionary: List[TaggedWord]) -> Lis
 
     tagged_collocation = [word for word in dictionary if word.word in raw_words]
     return tagged_collocation
+
+
+def find_candidate_by_id(collocation_list: List[Collocation], cid: int):
+    results = [collocation for collocation in collocation_list if collocation.id == cid]
+    result = results[0] if len(results) > 0 else None
+    if result is None:
+        collocation_dict = dict([(r.id, r) for r in collocation_list])
+        collocation_with_links = list(filter(lambda x: len(x.llinked) > 0, collocation_list))
+        link_integrity_checks = [all(link in collocation_dict for link in p.llinked) for p in collocation_with_links]
+        flag = all(link_integrity_checks)
+        logging.debug("----> Фраза по id (#{0}) не найдена, все ли в порядке со ссылками в списке: {1}, а хоть что-то: {2}".format(cid, flag, True in link_integrity_checks))
+    return result

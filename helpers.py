@@ -1,3 +1,25 @@
+from typing import List, Any
+from operator import itemgetter
+LIMIT_PER_PROCESS = 80
+
+
+def split_tasks(task_list: List[Any]):
+    """
+    Разделяет список на несколько для равномерного разделения процессов на параллельные потоки
+    :param task_list: входной список
+    :return: разделенный список
+    """
+    length = len(task_list)
+    threads = 1
+    if length > LIMIT_PER_PROCESS:
+        threads = int(length / LIMIT_PER_PROCESS) + 1
+    if threads == 1:
+        split_list = [task_list]
+    else:
+        split_list = [task_list[LIMIT_PER_PROCESS * i:LIMIT_PER_PROCESS * (i + 1)] for i in range(threads)]
+    return split_list
+
+
 def remove_spans(term: str, spans: list) -> str:
     """
     Удаляет из строки слова, включенные в стоп-список

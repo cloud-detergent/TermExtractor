@@ -4,13 +4,14 @@ from ITermExtractor.stoplist import StopList
 from TextImporter import (DefaultTextImporter, PlainTextImporter, PdfTextImporter)
 from typing import List
 from ITermExtractor.Structures.WordStructures import TaggedWord
+from operator import itemgetter
 import Runner
 import datetime
 import os
 import logger_settings
 import logging
 import ITermExtractor.stat.cvalue_revisited as cvalue
-import ITermExtractor.stat.kfactor as kfactor
+import ITermExtractor.stat.kfactor_revisited as kfactor
 import pickle
 from ITermExtractor.Tests.linguistic_filter import is_integral
 
@@ -97,6 +98,7 @@ def input_menu(text: str, choices: List[str], is_menu_entry: bool = True, show_o
 
     return choice
 
+# TODO сравнить результаты на 3k
 if __name__ == "__main__":
     USE_FILTER_1 = True
     USE_FILTER_2 = True
@@ -181,8 +183,8 @@ if __name__ == "__main__":
         logger.debug("Текст обработан, количество слов с тегами {0}".format(len(tagged_sentence_list)))
         if choice_tag_cache_write:
             save_tag_data(os.path.join('result', 'tags'), tagged_sentence_list)
-            with open(os.path.join('data', 'input_text.txt'), mode="wt") as f:
-                f.write(input_text)
+            #with open(os.path.join('data', 'input_text.txt'), mode="wt") as f:
+            #    f.write(input_text)
             logger.info("Теги сохранены в файл")
 
     logger.debug("Начало извлечения списка терминов")
@@ -213,15 +215,16 @@ if __name__ == "__main__":
 
     logger.info("Запись промежуточных результатов в файлы")
     if USE_FILTER_1 and RERUN_FILTER_1:
-        save_text_raw_terms(os.path.join('result', 'inter-noun_plus.txt'), filtered_terms1)
+        save_text_raw_terms(os.path.join('result', 'inter-noun_plus.txt'), sorted(filtered_terms1, key=itemgetter('wordcount'), reverse=True))
     if USE_FILTER_2 and RERUN_FILTER_2:
-        save_text_raw_terms(os.path.join('result', 'inter-adj_noun.txt'), filtered_terms2)
+        save_text_raw_terms(os.path.join('result', 'inter-adj_noun.txt'), sorted(filtered_terms2, key=itemgetter('wordcount'), reverse=True))
     logger.info("Данные записаны")
 
     dictionary = [word for sentence in tagged_sentence_list for word in sentence]
 
     logger.info("Подсчитываем cvalue")
     track_time("cvalue")
+    cvalue.set_threshold(0)
     if USE_FILTER_1 and USE_CVALUE_1:
         logger.info("Переход к подчету, фильтр 1, к обработке {0}".format(len(filtered_terms1)))
         cvalue_res_1 = cvalue.calculate(filtered_terms1)
@@ -245,7 +248,6 @@ if __name__ == "__main__":
         save_text_raw_terms(os.path.join('result', 'kfactor_noun_plus.txt'), kfactor_res)
     track_time("kfactor")
 
-    # TODO Удалять кандидаты с 1 словом ?
     track_time()
     logger.info("Алгоритм работал {0} c.".format(difference()))
     logger.info("Из которых cvalue работал {0} c.".format(difference("cvalue")))

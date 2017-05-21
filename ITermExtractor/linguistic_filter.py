@@ -14,8 +14,6 @@ from ITermExtractor.Tests.linguistic_filter import is_integral
 LIMIT_PER_PROCESS = 80
 # TODO общие структуры вынести в отдельный модуль
 
-# TODO новая ветка с оптимизацией нахождения вложенных словосоч
-
 
 class LinguisticFilter(object):
     """
@@ -127,12 +125,12 @@ class NounPlusLinguisticFilter(LinguisticFilter):
     _filter_pattern = "Noun+Noun"
 
     def __init__(self):
-        self.pattern = FilterPatternConjuction([FilterPatternToken(PartOfSpeech.noun, 2, math.inf)])
+        self.pattern = FilterPatternConjuction([FilterPatternToken(PartOfSpeech.noun, 1, math.inf)])
 
 
 class AdjNounLinguisticFilter(LinguisticFilter):
     def __init__(self):
-        token_1 = FilterPatternToken(PartOfSpeechStruct([PartOfSpeech.adjective, PartOfSpeech.noun], "|"), 1, math.inf)
+        token_1 = FilterPatternToken(PartOfSpeechStruct([PartOfSpeech.adjective, PartOfSpeech.noun], "|"), 0, math.inf)
         token_2 = FilterPatternToken(PartOfSpeech.noun, 1)
         self.pattern = FilterPatternConjuction([token_1, token_2])
 
@@ -167,7 +165,8 @@ class FilterPatternConjuction(object):
         check_flag = False in [isinstance(element, m.TaggedWord) for element in phrase]
         if check_flag:
             raise ValueError("Необходим список кортежей(строка, часть речи)")
-
+        if len(phrase) == 0:
+            return False
         flag = False
         if not self.__iscomplex__:
             flag = self.pattern[0].match(phrase)
