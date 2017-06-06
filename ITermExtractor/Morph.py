@@ -3,13 +3,17 @@ import re
 import pymorphy2
 from ITermExtractor.Structures.PartOfSpeech import PartOfSpeech, POSNameConverter
 from ITermExtractor.Structures.Case import Case, CaseNameConverter
-from ITermExtractor.Structures.WordStructures import TaggedWord, Collocation
+from ITermExtractor.Structures.WordStructures import TaggedWord, Collocation, non_whitespace_separators, Separator
 import helpers
 from typing import List, Tuple  # TODO PEP 484 & type checks
+from pyxdameraulevenshtein import normalized_damerau_levenshtein_distance_ndarray
 import logging
+import deprecated
 import traceback
+import numpy as np
 
 LENGTH_LIMIT_PER_PROCESS = 200
+DIST_THRESHOLD = 0.15
 __MorphAnalyzer__ = pymorphy2.MorphAnalyzer()
 
 
@@ -124,11 +128,9 @@ def get_main_word(collocation: List[TaggedWord]) -> str:
     ...
     ValueError: Словосочетания с глаголами и наречиями не поддерживаются
     """
-    # TODO удаление whitespace'ов
     check_list = [isinstance(word, TaggedWord) for word in collocation]
-    if not isinstance(collocation, list) or len(collocation) == 0 or False in check_list:
+    if not isinstance(collocation, list) or len(collocation) == 0 or not all(check_list):
         return ""
-        # raise TypeError("Необходим список слов с тегами")  # TODO exception
 
     pos = [word.pos for word in collocation]
 
@@ -149,6 +151,7 @@ def get_main_word(collocation: List[TaggedWord]) -> str:
             for w in collocation:
                 if w.case == Case.nominative or w.case == Case.accusative:
                     result = w.word
+                    break
             if result == '':
                 nouns = [word for word in collocation if word.pos == PartOfSpeech.noun]
                 if len(nouns) != 0:
@@ -374,14 +377,17 @@ def tag_word(word: str) -> TaggedWord:
     """
     is_word_valid = word.isalpha() or word.find('-') > 0
     validity_check = is_word_valid
-    reg_word_symbols = '[a-zA-Zа-яА-Я-]{2,}'
+    reg_word_symbols = '[a-zA-Zа-яА-Я-]{1,}'
     if not is_word_valid:
         symbol_check = [symbol.isalpha() or symbol == '-' for symbol in word]
-        validity_check = symbol_check.count(True) / len(symbol_check) >= 0.7
-        if validity_check:
-            parts = re.findall(reg_word_symbols, word)
-            validity_check = len(parts) == 1
-            word = parts[0]
+        if len(symbol_check) == 0:
+            validity_check = False
+        else:
+            validity_check = symbol_check.count(True) / len(symbol_check) >= 0.7
+            if validity_check:
+                parts = re.findall(reg_word_symbols, word)
+                validity_check = len(parts) == 1
+                word = parts[0]
 
     if not validity_check:
         return None
@@ -396,6 +402,9 @@ def tag_word(word: str) -> TaggedWord:
             max_score_elements = list(sorted(parse_info, key=itemgetter(1)))  # 'tag'
             base_element = max_score_elements[0]
 
+    pos = PartOfSpeech.noun
+    case = Case.none
+    normalized = base_element.word
     try:
         pos = POSNameConverter.to_enum(str(base_element.tag.POS))
         case = CaseNameConverter.to_enum(str(base_element.tag.case))
@@ -410,8 +419,8 @@ def tag_word(word: str) -> TaggedWord:
     return result
 
 
-def tag_collocation(collocation: str) -> List[TaggedWord]:
-    """*
+def tag_collocation(collocation: str) -> List[TaggedWord and Separator]:  # TODO test
+    """
     Присваивает каждому слову в словосочетании метки части речи и падежа
     :param collocation: словосочетание
     :return: размеченный список слов
@@ -419,14 +428,33 @@ def tag_collocation(collocation: str) -> List[TaggedWord]:
     words = collocation.split()
     tagged_words = []
     for word in words:
-        tagged_word = tag_word(word)
-        if tagged_word is not None:
+
+        existing_separators = [(s, word.find(s)) for s in non_whitespace_separators if s in word]
+        existing_separators = sorted(existing_separators, key=itemgetter(1))  # sort by position in a word
+        if len(existing_separators) > 0:
+            separatorless_word = word.strip(non_whitespace_separators)
+            word_position = word.find(separatorless_word)
+            tagged_word = tag_word(separatorless_word)
+
+            preceding_separators = [Separator(symbol=s[0]) for s in existing_separators if s[1] < word_position]
+            following_separators = [Separator(symbol=s[0]) for s in existing_separators if s[1] > word_position]
+
+            if len(preceding_separators) != 0 and len(following_separators) != 0 and tagged_word is None:
+                continue
+
+            tagged_words += preceding_separators
             tagged_words.append(tagged_word)
+            tagged_words += following_separators
+        else:
+            tagged_word = tag_word(word)
+            if tagged_word is not None:
+                tagged_words.append(tagged_word)
 
     return tagged_words
 
 
-def get_collocation_normal_form(collocations: List[List[TaggedWord]]) -> int:
+# @deprecated
+def get_collocation_normal_form_old(collocations: List[List[TaggedWord]]) -> int:
     """
     Из перечня словосочетаний выбирает словосочетание, находящееся в нормальной форме
     Используется в случаях, когда необходимо выявить нормальную форму из списка словосочетаний
@@ -448,9 +476,92 @@ def get_collocation_normal_form(collocations: List[List[TaggedWord]]) -> int:
     return index
 
 
-# def get_normal_form(collocation: List[])
-# TODO метод получения нормальной формы
-# прил+сущ
+def get_biword_coll_normal_form(collocation: List[TaggedWord]) -> str:
+    """
+    Нормальная форма словосочетания из 2 слов 
+    :param collocation: 
+    :return: 
+    """
+    if len(collocation) != 2:
+        return str()
+    for i in range(len(collocation)):
+        word = collocation[i]
+        if isinstance(word, str):
+            logging.warning('В словаре уже отпарсенных слов не нашлось \'{0}\''.format(word))
+            collocation[i] = tag_word(word)
+
+    main_word = get_main_word(collocation)
+    normalized_collocation = []
+    for word in collocation:
+        if word.word == main_word or word.pos == PartOfSpeech.adjective:
+            normalized_collocation.append(word.normalized)
+        else:
+            parse_info = __MorphAnalyzer__.parse(word.word)
+            # the_word = list(filter(lambda o: CaseNameConverter.to_name(word.case) == o.tag.case, parse_info))[0]
+            the_word = next(iter(filter(lambda o: CaseNameConverter.to_name(word.case) == o.tag.case, parse_info)), None)
+            if the_word is None:
+                print('why?')
+                lexeme = next(iter(parse_info)).word
+            else:
+                lexeme = the_word.inflect({'gent'}).word
+            normalized_collocation.append(lexeme)
+    return ' '.join(normalized_collocation)
+
+
+def get_collocation_normal_form(pnormal_form: str, collocations: List[Collocation], main_word: str) -> int:
+    """
+    Из перечня словосочетаний выбирает словосочетание, находящееся в нормальной форме
+    Используется в случаях, когда необходимо выявить нормальную форму из списка словосочетаний
+    ('огонь артиллерии', 'огня артиллерии') -> 'огонь артиллерии'
+    Возвращает индекс
+    :param main_word: главное слово в словосочетании
+    :param pnormal_form: псевдонормальная форма
+    :param collocations: перечень словосочетаний
+    :return: индекс
+    """
+    forms = np.array([c.collocation for c in collocations])
+    distances = normalized_damerau_levenshtein_distance_ndarray(pnormal_form, forms)
+    indices = [(i, e) for i, e in enumerate(distances)
+               if e - min(distances) <= DIST_THRESHOLD and main_word in collocations[i].collocation]
+    if len(indices) > 1:  # TODO какие-то доп проверки?
+        indices = sorted(indices, key=itemgetter(1))
+    index = indices[0] if len(indices) > 0 else -1
+    if index == -1:
+        logging.error("Что-то при выводе в лог случилось {0}".format(index, forms))
+    # logging.info("\t||Из ({0}) выбираем {1} (#{2})".format(forms, collocations[index[0]], index))
+    return index[0]
+
+
+def replace_main_word(collocation: Collocation, main_word: str) -> Collocation:
+    if main_word not in collocation.pnormal_form or main_word in collocation:
+        return collocation
+    # number of word
+    regular_phrase = collocation.collocation.split(' ')
+    pn_phrase = collocation.pnormal_form.split(' ')
+    for i in range(len(regular_phrase)):
+        if pn_phrase[i] == main_word:
+            regular_phrase[i] = main_word
+            break
+    new_coll = ' '.join(regular_phrase)
+    return Collocation(new_coll, collocation.wordcount, 0, collocation.pnormal_form, collocation.llinked, collocation.id)
+
+
+            # @NotImplemented
+def get_normal_form(collocation: List[TaggedWord]) -> str:
+    if not isinstance(collocation, list):
+        raise TypeError("Аргумент должен быть списком слов")
+    if len(collocation) == 0:
+        return str()
+    if len(collocation) == 1:
+        return collocation[0].normal_form
+    main_word = get_main_word(collocation)
+    for word in collocation:
+        if word == main_word:
+            pass
+        parse_info = __MorphAnalyzer__.parse(word)
+        the_word = list(filter(lambda o: CaseNameConverter.to_name(word.case) == o.tag.case, parse_info))[0]
+        the_word.inflect({'gent'})
+    # candidate_term TaggedWord
 
 
 def make_substrs(collocation: str) -> List[str]:  # TODO а почему артиллерия не может быть термином

@@ -20,7 +20,7 @@ class CaseNameConverter(object):
         Case.accusative: 'accs',
         Case.ablative: 'ablt',
         Case.prepositional: 'loct',
-        Case.none: 'none',
+        Case.none: '',
     }
 
     @staticmethod
@@ -38,21 +38,30 @@ class CaseNameConverter(object):
         ...
         ValueError: Аргументом должна быть строка с наименованием падежа
         """
-        if "" == case:
+        if str() == case:
             raise ValueError('Аргументом должна быть строка с наименованием падежа')
+
         case = case.lower()
         cache = dict(CaseNameConverter._table)
         if not case in cache.values():
             draft = case[:3]
             similar = [cache_case for cache_case in cache.values() if cache_case.startswith(draft)]
-            if case == "voct":  # звательный vocative падеж
+            if case == 'voct':  # звательный vocative падеж
                 similar = ['nomn']
             elif len(similar) == 0:
-                raise ValueError('Не допустимое значение аргумента [{0}, {1}]'.format(case, draft))
+                return Case.none
+                # raise ValueError('Не допустимое значение аргумента [{0}, {1}]'.format(case, draft))
             case = similar[0]
         result = ""
         for key in cache.keys():
             if CaseNameConverter._table[key] == case:
                 result = key
                 break
+        return result
+
+    @staticmethod
+    def to_name(case: Case) -> str:
+        if case is Case.none:
+            return None
+        result = CaseNameConverter._table.get(case, '')
         return result

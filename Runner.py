@@ -7,7 +7,7 @@ import re
 import os
 import ITermExtractor.Morph as m
 from typing import List
-from ITermExtractor.Morph import TaggedWord
+from ITermExtractor.Morph import TaggedWord, Separator
 
 
 def split_sentences(input_text: str) -> str:
@@ -47,7 +47,7 @@ def split_sentences(input_text: str) -> str:
     return sentences
 
 
-def tag_collocation(word_collocation: str) -> List[TaggedWord]:
+def tag_collocation(word_collocation: str) -> List[TaggedWord and Separator]:
     """
     Обрабатывает словосочетание, присваивая каждому слову метку части речи
     :param word_collocation: словосочетание
@@ -76,5 +76,6 @@ def parse_text(input_text: str) -> List[List[TaggedWord]]:
     for sentence in sentences.splitlines():
         if sentence != "":
             tag_info = tag_collocation(sentence)
+            # tagged_sent_list += tag_info
             tagged_sent_list.append(tag_info)
     return tagged_sent_list

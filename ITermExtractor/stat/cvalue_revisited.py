@@ -8,7 +8,7 @@ from ITermExtractor.Structures.WordStructures import Collocation
 from itertools import groupby
 from helpers import split_tasks
 from ITermExtractor.Morph import find_candidate_by_id
-from ITermExtractor.Tests.linguistic_filter import is_integral
+from Tests.linguistic_filter import is_integral
 
 params = namedtuple('params', ['name', 'cvalue'])
 params.__doc__ = "Параметры терминологических подстрок"

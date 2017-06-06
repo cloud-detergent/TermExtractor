@@ -30,6 +30,7 @@ class PartOfSpeech(Enum):
     conjunction = 14,       """CONJ — союз (и, чтобы)"""
     particle = 15,          """PART — частица (бы, же, пусть)"""
     interjection = 16,      """INTJ — междометие (увы, батюшки)"""
+    participle = 17,      """PRT — причастие (ющий)"""
 
 
 class RepresentationMode(Enum):
@@ -71,7 +72,9 @@ class POSNameConverter(object):
                                                RFrm(RepresentationMode.opencorpora, 'INFN')),
                                             name_ru='глагол', name_en='verb'),
         PartOfSpeech.adverb: POS_Structure(Repr=(RFrm(RepresentationMode.ruscorpora, 'ADV'),
-                                                 RFrm(RepresentationMode.opencorpora, 'ADVB')),
+                                                 RFrm(RepresentationMode.opencorpora, 'ADVB'),
+                                                 RFrm(RepresentationMode.opencorpora, 'COMP'),
+                                                 ),
                                             name_ru='наречие', name_en='adverb'),
         PartOfSpeech.praedic: POS_Structure(Repr=(RFrm(RepresentationMode.ruscorpora, 'PRAEDIC'),
                                                   RFrm(RepresentationMode.opencorpora, 'PRED')),
@@ -91,6 +94,9 @@ class POSNameConverter(object):
         PartOfSpeech.particle: POS_Structure(Repr=(RFrm(RepresentationMode.ruscorpora, 'PART'),
                                                    RFrm(RepresentationMode.opencorpora, 'PRCL')),
                                                 name_ru='частица', name_en='particle'),
+        PartOfSpeech.participle: POS_Structure(Repr=(RFrm(RepresentationMode.opencorpora, 'PRTF'),
+                                                   RFrm(RepresentationMode.opencorpora, 'PRTS')),
+                                             name_ru='причастие', name_en='participle'),
     }
 
     @staticmethod

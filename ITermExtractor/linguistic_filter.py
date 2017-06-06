@@ -4,12 +4,14 @@ import ITermExtractor.Morph as m
 import multiprocessing
 import logging
 import copy
+
+from ITermExtractor.Structures.Case import Case
 from ITermExtractor.Structures.PartOfSpeech import PartOfSpeech
 from typing import List, Dict, Tuple
 from operator import itemgetter
-from ITermExtractor.Structures.WordStructures import Collocation, TaggedWord
+from ITermExtractor.Structures.WordStructures import Collocation, TaggedWord, Separator
 from itertools import groupby
-from ITermExtractor.Tests.linguistic_filter import is_integral
+from Tests.linguistic_filter import is_integral
 
 LIMIT_PER_PROCESS = 80
 # TODO общие структуры вынести в отдельный модуль
@@ -45,7 +47,16 @@ class LinguisticFilter(object):
             candidate_terms = candidate_terms + self.filter(sentence=sentence)
         logger.info("Предложения обработаны, переходим к соединению одинаковых ключей")
 
-        tag_cache = dict([(word.word.lower(), word) for s in sentences for word in s])
+        cache = []
+        for s in sentences:
+            for sentence_part in s:
+                if isinstance(sentence_part, Separator) or sentence_part is None:
+                    continue
+                word = sentence_part
+                case = Case.nominative if word.pos in [PartOfSpeech.noun, PartOfSpeech.adjective] else word.case
+                normal_word = TaggedWord(word=word.normalized, pos=word.pos, case=case, normalized=word.normalized)
+                cache.append(normal_word) # `"большой" - потерялись теги
+        tag_cache = dict([(c.normalized, c) for c in cache])
 
         prev_length = len(candidate_terms)
         logger.info("Предложения обработаны, соединяем схожие словоформы")
@@ -60,7 +71,7 @@ class LinguisticFilter(object):
         logger.info("Список отсортирован")
         return candidate_terms
 
-    def filter(self, sentence: List[TaggedWord]) -> List[Collocation]:
+    def filter(self, sentence: List[TaggedWord and Separator]) -> List[Collocation]:
         """
         Из входного предложения отсеивает терминологические кандидаты
         :param sentence: предложение/словосочетание, список из кортежей (слово, часть речи)
@@ -68,9 +79,21 @@ class LinguisticFilter(object):
         :return: словарь терминологических кандидатов с количеством встречаемости
         """
         # прогонять по списку токенов, по-элементно прогонять слова из предложения
-        if not isinstance(sentence, list) or False in [isinstance(word, TaggedWord) for word in sentence]:
+        if not isinstance(sentence, list):
             raise TypeError("Необходим список слов из предложения")
-        for word in sentence:  # все некорректные слова выкидываем за борт
+        if None in sentence:
+            sentence = [p for p in sentence if p is not None]
+        check_list = [isinstance(sentence_part, TaggedWord) or isinstance(sentence_part, Separator)
+                      for sentence_part in sentence]
+        if False in check_list:
+            false_index = check_list.index(False) if False in check_list else 0
+            raise TypeError("Необходим список слов из предложения", len(sentence),
+                            False in check_list, false_index, sentence[false_index], sentence)
+
+        for sentence_part in sentence:  # все некорректные слова выкидываем за борт
+            if isinstance(sentence_part, Separator):
+                continue
+            word = sentence_part
             if not helpers.is_correct_word(word.word) or str.isspace(word.word) or word.word == '':
                 sentence.remove(word)
 
@@ -89,11 +112,9 @@ class LinguisticFilter(object):
         # TODO почему-то выделяются ' налетами', 'открытия '
         for word_count in range(max_wlimit, min_wlimit - 1, -1):
             for i in range(0, len(sentence) - word_count + 1):  # извлечение словосочетаний, длиной от 2 слов и более
-                candidate_term = sentence[i:i+word_count]
-
-                for word in candidate_term:
-                    if len(word[0]) == 1 or "/" in word[0]:
-                        candidate_term.remove(word)
+                candidate_term = retrieve_collocation(sentence, i, word_count)
+                if len(candidate_term) < word_count:
+                    continue
 
                 candidate_term_collocation = ' '.join([word[0] for word in candidate_term]).lower()
                 pseudo_normal_form = ' '.join([word.normalized for word in candidate_term]).lower()
@@ -311,12 +332,20 @@ def concatenate_similar(word_dict: Dict[str, TaggedWord], collocations: List[Col
     for key, c_vars in grouped_collocations.items():
         index = 0
         if len(c_vars) > 1:
-            tagged_collocations = [([word_dict.get(word, None) for word in coll.collocation.split(" ")])
-                                   for coll in c_vars]
-            index = m.get_collocation_normal_form(tagged_collocations)
+            tagged_pnormal_collocation = [word_dict.get(word, word) for word in key.split(' ')]
+            if len(tagged_pnormal_collocation) == 1:
+                c_vars[index].collocation = c_vars[index].pnormal_form
+            elif len(tagged_pnormal_collocation) == 2:
+                variant = m.get_biword_coll_normal_form(tagged_pnormal_collocation)
+                c_vars[index].collocation = variant
+            elif len(tagged_pnormal_collocation) > 2: # TODO добавить +1 слово, где главное заменено на норм форму
+                main_word = m.get_main_word(tagged_pnormal_collocation)
+                new_var = m.replace_main_word(c_vars[0], main_word)
+                c_vars.append(new_var)
+                index = m.get_collocation_normal_form(key, c_vars, main_word)
+
             updated_freq = sum([c.freq for c in c_vars])
             c_vars[index].freq = updated_freq
-        # c_vars[index].id = id(c_vars[index])
         final_list.append(c_vars[index])
     return final_list
 
@@ -434,3 +463,26 @@ def split_tasks(task_list: List[Collocation]):
     else:
         split_list = [sorted_list[LIMIT_PER_PROCESS * i:LIMIT_PER_PROCESS * (i + 1)] for i in range(threads)]
     return split_list
+
+
+def retrieve_collocation(sentence: List[TaggedWord and Separator], start_index: int, collocation_length: int) -> List[TaggedWord]:
+    """
+    Получение словосочетаний с учетом разделителей
+    :param sentence: предложение с размеченными словами и разделителями
+    :param start_index: откуда стартовать
+    :param collocation_length: длина словосочетания, которое неббходимо извлечь
+    :return:
+    """
+    if not isinstance(sentence, list) or len(sentence) == 0 or start_index >= len(sentence) \
+            or collocation_length > len(sentence):
+        return None
+    result_collocation = []
+    len_diff = len(sentence) - (start_index + collocation_length)
+    if len_diff <= 0:
+        collocation_length += len_diff
+    for i in range(start_index, start_index + collocation_length):
+        if isinstance(sentence[i], TaggedWord):
+            result_collocation.append(sentence[i])
+        if isinstance(sentence[i], Separator):
+            break
+    return result_collocation

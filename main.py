@@ -2,7 +2,7 @@ from ITermExtractor.linguistic_filter import (NounPlusLinguisticFilter, AdjNounL
 from ITermExtractor.linguistic_filter import Collocation
 from ITermExtractor.stoplist import StopList
 from TextImporter import (DefaultTextImporter, PlainTextImporter, PdfTextImporter)
-from typing import List
+from typing import List, Tuple
 from ITermExtractor.Structures.WordStructures import TaggedWord
 from operator import itemgetter
 import Runner
@@ -13,7 +13,7 @@ import logging
 import ITermExtractor.stat.cvalue_revisited as cvalue
 import ITermExtractor.stat.kfactor_revisited as kfactor
 import pickle
-from ITermExtractor.Tests.linguistic_filter import is_integral
+from Tests.linguistic_filter import is_integral
 
 
 def save_text_raw_terms(filename: str, input_list: List[Collocation]):
@@ -43,8 +43,23 @@ def save_text_stat(filename: str, input_list: List[cvalue.params]):
     with open(file=filename, mode="wt", encoding="utf-8") as f:
         data = []
         for line in input_list:
-            data.append("{0} = {1}{2}".format(line.name, round(line.cvalue, 3), os.linesep))
+            pattern = "{0} = {1}{2}"
+            if isinstance(line, cvalue.params):
+                data.append(pattern.format(line.name, round(line.cvalue, 3), os.linesep))
+            elif isinstance(line, Collocation):
+                data.append(pattern.format(line.collocation, round(line.freq, 3), os.linesep))
         f.writelines(data)
+
+
+def open_text_stat(filename: str) -> List[Tuple[str, float]]:
+    result = []
+    with open(file=filename, mode="rt", encoding="utf-8") as f:
+        data = f.readlines()
+        for line in data:
+            v = line.split(' = ')
+            result.append((v[0].strip(), float(v[1].strip())))
+            # data.append("{0} = {1}{2}".format(line.name, round(line.cvalue, 3), os.linesep))
+    return result
 
 
 def save_tag_data(filename: str, tag_list: List[TaggedWord]):
@@ -104,7 +119,7 @@ if __name__ == "__main__":
     USE_FILTER_2 = True
     RERUN_FILTER_1 = True
     RERUN_FILTER_2 = True
-    USE_CVALUE_1 = USE_CVALUE_2 = USE_KFACTOR = False
+    USE_CVALUE_1 = USE_CVALUE_2 = USE_KFACTOR_1 = USE_KFACTOR_2 = False
 
     logger_settings.setup()
     logger = logging.getLogger()
@@ -147,13 +162,14 @@ if __name__ == "__main__":
 
     choice_stoplist = input_menu("Использовать стоп-лист?", ["Да", "Нет"]) == 1
 
-    options = ['c-value с Noun+ фильтром', 'c-value с Adj|Noun фильтром', 'kfactor', 'закончить выбор']
+    options = ['c-value с Noun+ фильтром', 'c-value с Adj|Noun фильтром', 'kfactor Noun+', 'kfactor Adj|Noun', 'закончить выбор']
     choice_algorithms = -1
     while choice_algorithms != len(options):
         choice_algorithms = input_menu("Выбор алгоритмов", options, show_options=choice_algorithms == -1)
         USE_CVALUE_1 = USE_CVALUE_1 or choice_algorithms == 1
         USE_CVALUE_2 = USE_CVALUE_2 or choice_algorithms == 2
-        USE_KFACTOR = USE_KFACTOR or choice_algorithms == 3
+        USE_KFACTOR_1 = USE_KFACTOR_1 or choice_algorithms == 3
+        USE_KFACTOR_2 = USE_KFACTOR_2 or choice_algorithms == 4
 
         # USE_FILTER_1 = USE_CVALUE_1 or USE_KFACTOR
         # USE_FILTER_2 = USE_CVALUE_2
@@ -240,12 +256,18 @@ if __name__ == "__main__":
     if USE_FILTER_2 and USE_CVALUE_2:
         save_text_stat(os.path.join('result', 'cvalue_adj_noun.txt'), cvalue_res_2)
 
-    logger.info("Подсчитываем kfactor, к обработке {0}".format(len(filtered_terms1)))
+    logger.info("Подсчитываем kfactor, фильтр 1, к обработке {0}".format(len(filtered_terms1)))
     track_time("kfactor")
-    if USE_FILTER_2 and USE_KFACTOR:
-        kfactor_res = kfactor.calculate(filtered_terms1, dictionary)
+    if USE_FILTER_1 and USE_KFACTOR_1:
+        kfactor_res_1 = kfactor.calculate(filtered_terms1, dictionary)
         logging.info("Подсчет закончен, сохраняем результаты в файл")
-        save_text_raw_terms(os.path.join('result', 'kfactor_noun_plus.txt'), kfactor_res)
+        save_text_stat(os.path.join('result', 'kfactor_noun_plus.txt'), kfactor_res_1)
+    track_time("kfactor")
+    logger.info("Подсчитываем kfactor, фильтр 2, к обработке {0}".format(len(filtered_terms2)))
+    if USE_FILTER_2 and USE_KFACTOR_2:
+        kfactor_res_2 = kfactor.calculate(filtered_terms2, dictionary)
+        logging.info("Подсчет закончен, сохраняем результаты в файл")
+        save_text_stat(os.path.join('result', 'kfactor_adj_noun.txt'), kfactor_res_2)
     track_time("kfactor")
 
     track_time()
@@ -254,3 +276,6 @@ if __name__ == "__main__":
     logger.info("Из которых kfactor работал {0} c.".format(difference("kfactor")))
     logger.info("Конец")
     print("Конец обработки данных")
+
+    # print("Время оценивания полученного по словарю")
+    # voc.run_comparison(cvalue_res_1)

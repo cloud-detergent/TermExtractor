@@ -1,12 +1,17 @@
 from collections import namedtuple
 from copy import deepcopy
 
-TaggedWord = namedtuple('TaggedWord', ['word', 'pos', 'case', 'normalized'])
+TaggedWord = namedtuple('TaggedWord', ['word', 'pos', 'case', 'normalized'])  # TODO число - ед/мн
 TaggedWord.__doc__ = "Размеченное слово"
 TaggedWord.word.__doc__ = "Слово"
 TaggedWord.pos.__doc__ = "Часть речи"
 TaggedWord.case.__doc__ = "Падеж"
 TaggedWord.normalized.__doc__ = "Нормальная форма слова"
+
+Separator = namedtuple('Separator', ['symbol'])
+Separator.__doc__ = "Разделитель слов в предложении"
+Separator.symbol.__doc__ = "Символ разделителя (запятая)"
+non_whitespace_separators = '[](),;:'
 
 
 class Collocation(dict):
