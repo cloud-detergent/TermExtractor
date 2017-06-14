@@ -37,11 +37,14 @@ def calculate(candidates: List[Collocation], dictionary: List[TaggedWord]) -> Li
                 longer_phrases = [find_candidate_by_id(candidates, link_id) for link_id in candidate.llinked]
                 for longer_term in longer_phrases:
                     if longer_term.freq > KFACTOR * candidate.freq:
-                        if is_beyond_threshold(candidate):
+                        if is_beyond_threshold(candidate) and candidate not in result_list:
                             result_list.append(candidate)
                     else:
                         if is_beyond_threshold(longer_term) and longer_term not in candidates:
-                            result_list.append(longer_term)
+                            if longer_term not in result_list:
+                                result_list.append(longer_term)
+                                if candidate in result_list:
+                                    result_list.remove(candidate)
         logging.info("Кандидаты длиной {0} сл. обработаны".format(index))
 
     logger.info("Список терминов сформирован, элементов: {0}. Сортировка впереди".format(len(result_list)))

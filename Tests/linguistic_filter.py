@@ -218,6 +218,15 @@ class TestLinguisticFilter(unittest.TestCase):
 
         # </editor-fold>
 
+    def test_one_letter_retrieve_collocation(self):
+        text_part = ' П р и м е ч а н и е. Указания хранить в штабах полков, дивизий и корпусов. Военный Совет Армии П Р И К А З Ы В А Е Т:'
+        tag_info = Runner.parse_text(text_part)
+
+        result_start_one = retrieve_collocation(tag_info[0], 0, 5)
+        result_start_two = retrieve_collocation(tag_info[1], 0, 4)
+        self.assertEqual(' '.join([w.word for w in result_start_one]), 'Указания хранить в штабах полков')
+        self.assertEqual(' '.join([w.word for w in result_start_two]), 'Военный Совет Армии')
+
 
 def is_integral(collocation_list: List[Collocation]) -> bool:
     collocation_dict = dict([(r.id, r) for r in collocation_list])

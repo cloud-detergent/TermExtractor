@@ -42,6 +42,9 @@ def split_sentences(input_text: str) -> str:
     sentences = re.sub(pattern=r"[^\S\r\n]*[\r\n][^\S\r\n]*", repl=os.linesep, string=sentences)
     sentences = re.sub(pattern=r"[\r\n]{2,}", repl=os.linesep, string=sentences)
     sentences = re.sub(pattern=r"[\r\n]$", repl="", string=sentences)
+
+    sentences = re.sub(pattern='(\\s+\\w(?=\\s)){2,}', repl='', string=sentences)
+    # Удаляем слова, у которых пробел через каждую букву
     # sentences = re.split(split_symbols, input_text)
     # sentences = [sentence.strip() for sentence in sentences if sentence is not None and sentence != '' and not str.isspace(sentence)]
     return sentences

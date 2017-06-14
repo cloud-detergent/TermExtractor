@@ -94,6 +94,7 @@ class LinguisticFilter(object):
             if isinstance(sentence_part, Separator):
                 continue
             word = sentence_part
+
             if not helpers.is_correct_word(word.word) or str.isspace(word.word) or word.word == '':
                 sentence.remove(word)
 
@@ -104,12 +105,10 @@ class LinguisticFilter(object):
         max_wlimit = max_wlimit if max_wlimit <= self._limit else self._limit
 
         if len(sentence) < min_wlimit:
-            # logging.debug("В предложении слишком мало слов {0}".format(len(sentence)))  # TODO доп фильтрация на уровне извлечения предложений
             return list()
         if len(sentence) < max_wlimit:
             max_wlimit = len(sentence)
 
-        # TODO почему-то выделяются ' налетами', 'открытия '
         for word_count in range(max_wlimit, min_wlimit - 1, -1):
             for i in range(0, len(sentence) - word_count + 1):  # извлечение словосочетаний, длиной от 2 слов и более
                 candidate_term = retrieve_collocation(sentence, i, word_count)
@@ -135,7 +134,6 @@ class LinguisticFilter(object):
                                         wordcount=len(candidate_term),
                                         freq=1,
                                         pnormal_form=pseudo_normal_form))
-                        # TODO новые поля этого именованного кортежа, id выдавать uuid? Uuid.uuid4().hex
         return candidate_terms
 
     def match(self, phrase):
@@ -182,7 +180,6 @@ class FilterPatternConjuction(object):
 
     def match(self, phrase: List[TaggedWord]) -> bool:
         # проверка с конца, как правило в шаблонах последний токен требует 1 вхождение
-        # TODO обновить, переписать метод установления соответствия
         check_flag = False in [isinstance(element, m.TaggedWord) for element in phrase]
         if check_flag:
             raise ValueError("Необходим список кортежей(строка, часть речи)")
@@ -476,12 +473,15 @@ def retrieve_collocation(sentence: List[TaggedWord and Separator], start_index: 
     if not isinstance(sentence, list) or len(sentence) == 0 or start_index >= len(sentence) \
             or collocation_length > len(sentence):
         return None
+
     result_collocation = []
     len_diff = len(sentence) - (start_index + collocation_length)
     if len_diff <= 0:
         collocation_length += len_diff
     for i in range(start_index, start_index + collocation_length):
         if isinstance(sentence[i], TaggedWord):
+            if len(sentence[i].word) == 1 and sentence[i].pos not in [PartOfSpeech.preposition, PartOfSpeech.conjunction]:
+                continue
             result_collocation.append(sentence[i])
         if isinstance(sentence[i], Separator):
             break
