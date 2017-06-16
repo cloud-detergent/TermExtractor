@@ -335,7 +335,7 @@ def concatenate_similar(word_dict: Dict[str, TaggedWord], collocations: List[Col
             elif len(tagged_pnormal_collocation) == 2:
                 variant = m.get_biword_coll_normal_form(tagged_pnormal_collocation)
                 c_vars[index].collocation = variant
-            elif len(tagged_pnormal_collocation) > 2: # TODO добавить +1 слово, где главное заменено на норм форму
+            elif len(tagged_pnormal_collocation) > 2:  # TODO добавить +1 слово, где главное заменено на норм форму
                 main_word = m.get_main_word(tagged_pnormal_collocation)
                 new_var = m.replace_main_word(c_vars[0], main_word)
                 c_vars.append(new_var)

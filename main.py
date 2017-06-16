@@ -1,7 +1,7 @@
 from ITermExtractor.linguistic_filter import (NounPlusLinguisticFilter, AdjNounLinguisticFilter, AdjNounReducedLinguisticFilter)
 from ITermExtractor.linguistic_filter import Collocation
 from ITermExtractor.stoplist import StopList
-from TextImporter import (DefaultTextImporter, PlainTextImporter, PdfTextImporter)
+from TextImporter import (DefaultTextImporter, PlainTextImporter, PdfHtmlTextImporter, FileArrayImporter)
 from typing import List, Tuple
 from ITermExtractor.Structures.WordStructures import TaggedWord
 from operator import itemgetter
@@ -129,8 +129,13 @@ if __name__ == "__main__":
     # choice_single_thread = input_menu("Обрабатывать данные в одном потоке?", ["Да", "Нет"]) == 1
 
     choice_tag_cache_read = input_menu("Использовать предыдущие данные морфологического анализа ?", ["Да", "Нет"]) == 1
-    if not choice_tag_cache_read:
-        choice_source = input_menu("Выберите источник", ["Стандартный текст", "Текстовый файл", "Pdf-документ"])
+    if choice_tag_cache_read:
+        choice_rerun_filter = input_menu("Запустить заново лингвистический фильтр?", ["Да", "Нет"]) == 1
+
+        RERUN_FILTER_1 = choice_rerun_filter
+        RERUN_FILTER_2 = choice_rerun_filter
+    else:
+        choice_source = input_menu("Выберите источник", ["Стандартный текст", "Текстовый файл", "Pdf-документ", "Список файлов"])
         if choice_source != 1:
             choice_source_filename = input_menu("Введите имя файла (0-использовать стандартный файл)", [], False)
             choice_source_std = choice_source_filename == '0'
@@ -147,7 +152,7 @@ if __name__ == "__main__":
                 test_file = os.path.join('data', choice_source_filename)
             logger.info("Выбран текстовый файл '{0}'".format(test_file))
             text_importer = PlainTextImporter(test_file)
-        else:
+        elif choice_source == 3:
             if choice_source_std:
                 test_file = os.path.join('data', 'Cборник боевых документов ВОВ выпуск 12.pdf')
             else:
@@ -157,8 +162,15 @@ if __name__ == "__main__":
             start_index = 600  # int(input_menu("Стартовый индекс", [], False))
 
             logger.info("Выбран pdf документ '{0}'".format(test_file))
-            text_importer = PdfTextImporter(filename=test_file, word_limit=word_limit, start_index=start_index)  # sys.argv[1]
+            text_importer = PdfHtmlTextImporter(filename=test_file, word_limit=word_limit, start_index=start_index)  # sys.argv[1]
             # TODO есть предложения, части которых разделены '\n'. части обрабатываются как отдельные предложения?
+        elif choice_source == 4:
+            if choice_source_std:
+                test_file = os.path.join('data', 'Corpus', 'list.txt')
+            else:
+                test_file = os.path.join('data', choice_source_filename)
+            logger.info("Выбран файл со списком'{0}'".format(test_file))
+            text_importer = FileArrayImporter(test_file)
 
     choice_stoplist = input_menu("Использовать стоп-лист?", ["Да", "Нет"]) == 1
 
@@ -171,8 +183,8 @@ if __name__ == "__main__":
         USE_KFACTOR_1 = USE_KFACTOR_1 or choice_algorithms == 3
         USE_KFACTOR_2 = USE_KFACTOR_2 or choice_algorithms == 4
 
-        # USE_FILTER_1 = USE_CVALUE_1 or USE_KFACTOR
-        # USE_FILTER_2 = USE_CVALUE_2
+        USE_FILTER_1 = USE_CVALUE_1 or USE_KFACTOR_1
+        USE_FILTER_2 = USE_CVALUE_2 or USE_KFACTOR_2
     print("Выбор осуществлен")
     if not choice_tag_cache_read:
         input_text = text_importer.get_text()
@@ -191,15 +203,13 @@ if __name__ == "__main__":
                     .format("пусто" if len(tagged_sentence_list) == 0 else "есть данные"))
         terms1 = open_raw_terms(os.path.join('result','inter-noun_plus.txt'))
         terms2 = open_raw_terms(os.path.join('result','inter-adj_noun.txt'))
-        RERUN_FILTER_1 = False
-        RERUN_FILTER_2 = False
 
     if not choice_tag_cache_read or len(tagged_sentence_list) == 0:
         tagged_sentence_list = Runner.parse_text(input_text=input_text)
         logger.debug("Текст обработан, количество слов с тегами {0}".format(len(tagged_sentence_list)))
         if choice_tag_cache_write:
             save_tag_data(os.path.join('result', 'tags'), tagged_sentence_list)
-            #with open(os.path.join('data', 'input_text.txt'), mode="wt") as f:
+            # with open(os.path.join('data', 'input_text.txt'), mode="wt") as f:
             #    f.write(input_text)
             logger.info("Теги сохранены в файл")
 

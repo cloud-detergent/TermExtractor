@@ -500,7 +500,8 @@ def get_biword_coll_normal_form(collocation: List[TaggedWord]) -> str:
             # the_word = list(filter(lambda o: CaseNameConverter.to_name(word.case) == o.tag.case, parse_info))[0]
             the_word = next(iter(filter(lambda o: CaseNameConverter.to_name(word.case) == o.tag.case, parse_info)), None)
             if the_word is None:
-                print('why?')
+                print('why? Было передано отпарсенное слово с неверным падежом?! {0}, чр {1}, п. {2}'
+                      .format(word.word, word.pos, word.case))
                 lexeme = next(iter(parse_info)).word
             else:
                 lexeme = the_word.inflect({'gent'}).word
@@ -519,16 +520,21 @@ def get_collocation_normal_form(pnormal_form: str, collocations: List[Collocatio
     :param collocations: перечень словосочетаний
     :return: индекс
     """
+    if 'ё' in pnormal_form.lower():
+        main_word = main_word.replace('ё', 'е')
+        pnormal_form = pnormal_form.replace('ё', 'е')
+        for c in collocations:
+            c.collocation = c.collocation.replace('ё', 'е')
     forms = np.array([c.collocation for c in collocations])
     distances = normalized_damerau_levenshtein_distance_ndarray(pnormal_form, forms)
     indices = [(i, e) for i, e in enumerate(distances)
                if e - min(distances) <= DIST_THRESHOLD and main_word in collocations[i].collocation]
     if len(indices) > 1:  # TODO какие-то доп проверки?
         indices = sorted(indices, key=itemgetter(1))
-    index = indices[0] if len(indices) > 0 else -1
+    index = next(iter(indices)) if len(indices) > 0 else -1  # indices[0]
     if index == -1:
         logging.error("Что-то при выводе в лог случилось {0}".format(index, forms))
-    # logging.info("\t||Из ({0}) выбираем {1} (#{2})".format(forms, collocations[index[0]], index))
+        return index
     return index[0]
 
 

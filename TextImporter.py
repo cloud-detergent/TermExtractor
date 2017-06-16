@@ -2,6 +2,7 @@ import textract
 import io
 import re
 import logging
+import os
 
 
 class TextImporter(object):
@@ -42,7 +43,7 @@ class PlainTextImporter(TextImporter):
         return text
 
 
-class PdfTextImporter(TextImporter):
+class PdfHtmlTextImporter(TextImporter):
     """
     Текст из pdf документа
     """
@@ -55,8 +56,8 @@ class PdfTextImporter(TextImporter):
         :param word_limit: ограничение по количеству слов
         :param start_index: номер начального слова, с которого следует начать фрагмент
         """
-        if not filename.endswith(".pdf"):
-            raise TypeError("Требуется pdf документ")
+        if not (filename.endswith(".pdf") or filename.endswith(".html") or filename.endswith(".htm")):
+            raise TypeError("Требуется html или pdf документ")
         self.FileName = filename
         self.__WORD_LIMIT__ = word_limit
         self.__START_INDEX__ = start_index
@@ -67,7 +68,7 @@ class PdfTextImporter(TextImporter):
         :return: текст
         """
         logger = logging.getLogger()
-        logger.debug("Начало извлечения текста из pdf документа")
+        logger.debug("Начало извлечения текста из документа")
         text = textract.process(self.FileName)
         logger.debug("Текст извлечен")
         text = text.decode('utf-8')
@@ -93,3 +94,39 @@ class PdfTextImporter(TextImporter):
                     text = output_stream.getvalue()
                     logger.info("Фрагмент из {0} сл извлечен".format(current_word_index - self.__START_INDEX__))
         return text
+
+
+class FileArrayImporter(TextImporter):
+
+    def __init__(self, filelist_name: str):
+        """
+        :param filelist_name: имя файла со списком документов
+        """
+        self.__files__ = list()
+        if filelist_name == str():
+            raise ValueError('Требуется наименование файла, хранящего список документов')
+        if not (os.path.exists(filelist_name) and os.path.isfile(filelist_name)):
+            raise ValueError('Файл с наименованием \'{0}\' не сушествует'.format(filelist_name))
+
+        with open(file=filelist_name, mode="rt", encoding="utf-8") as f:
+            text = f.readlines()
+            for line in text:
+                current_file = os.path.join(os.path.dirname(filelist_name), line).strip()
+                if os.path.exists(current_file) and os.path.isfile(current_file):
+                    self.__files__.append(current_file)
+
+    def get_text(self):
+        text_corpus = list()
+        for file in self.__files__:
+            local_text = str()
+            logging.debug('Извлекаем содержимое из файла \'{0}\''.format(file))
+            if file.endswith('txt'):
+                local_text = PlainTextImporter(file).get_text()
+            elif file.endswith('pdf') or file.endswith('html') or file.endswith('htm'):
+                local_text = PdfHtmlTextImporter(file).get_text()
+            if len(local_text) > 0:
+                text_corpus.append(local_text)
+        text = '\n'.join(text_corpus)
+        return text
+
+
