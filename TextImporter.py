@@ -1,8 +1,13 @@
+from typing import List
+
 import textract
 import io
 import re
 import logging
 import os
+
+
+document_title_re = re.compile('^([А-Я/\d,№()–-]{1,20}[\s\n]){3,}', re.MULTILINE)
 
 
 class TextImporter(object):
@@ -15,6 +20,41 @@ class TextImporter(object):
         :return: текст
         """
         return ""
+
+    def get_documents(self, text: str, keys: List[str]=list()) -> List[str]:
+        if text == '' or not isinstance(keys, list) or any((not isinstance(key, str) for key in keys)):
+            return [text]
+
+        title_matches = []
+        res = document_title_re.search(text)
+        while res is not None:
+            found_span = res.span()
+            piece = text[found_span[0]:found_span[1]]
+            title_matches.append((piece, found_span[0]))
+            res = document_title_re.search(text, found_span[1])
+
+        i = 0
+        while i < len(title_matches):
+            parts = title_matches[i][0].split()
+            # TODO убирать и с цифры
+            if all(len(part) == 1 for part in parts) or title_matches[i][0].startswith('№') or title_matches[i][0].startswith('('):
+                title_matches.remove(title_matches[i])
+                i -= 1
+            if i > 0:
+                prev_end = title_matches[i - 1][1] + len(title_matches[i - 1][0])
+                curr_start = title_matches[i][1]
+                if abs(curr_start - prev_end) <= 15:
+                    title_matches.remove(title_matches[i])
+                    title_matches.remove(title_matches[i-1])
+                    i = i - 2 if i > 2 else 0
+            i += 1
+
+        # title_results = re.findall(document_title_re, text)
+        if len(title_matches) == 0:
+            return [text]
+        indiced_results = title_matches + [('', len(text))]
+        documents = [text[indiced_results[i][1]:indiced_results[i+1][1]] for i in range(len(indiced_results)-1)]
+        return documents
 
 
 class DefaultTextImporter(TextImporter):

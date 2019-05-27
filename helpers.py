@@ -1,9 +1,16 @@
 from typing import List, Any
 from operator import itemgetter
+import re
+import logging
+
+from ITermExtractor.Structures.WordStructures import TaggedWord, contains_sentence
+
 LIMIT_PER_PROCESS = 80
+THREAD_LIMIT = 8
+document_title_re = re.compile('^([А-Я/\d,№()–-]{1,20}[\s\n]){3,}', re.MULTILINE)
 
 
-def split_tasks(task_list: List[Any]):
+def split_tasks(task_list: List[Any], processes: int=0):
     """
     Разделяет список на несколько для равномерного разделения процессов на параллельные потоки
     :param task_list: входной список
@@ -11,12 +18,20 @@ def split_tasks(task_list: List[Any]):
     """
     length = len(task_list)
     threads = 1
-    if length > LIMIT_PER_PROCESS:
-        threads = int(length / LIMIT_PER_PROCESS) + 1
+    data_array_limit = LIMIT_PER_PROCESS
+    if processes == 0:
+        if length > LIMIT_PER_PROCESS:
+            threads = int(length / LIMIT_PER_PROCESS) + 1
+            threads = THREAD_LIMIT if threads > THREAD_LIMIT else threads
+            data_array_limit = int(length / threads)
+            logging.debug('Настроили количество потоков и список задач: {0} потоков по {1} строк'.format(threads, data_array_limit))
+    else:
+        threads = processes
+        data_array_limit = int(length / threads)
     if threads == 1:
         split_list = [task_list]
     else:
-        split_list = [task_list[LIMIT_PER_PROCESS * i:LIMIT_PER_PROCESS * (i + 1)] for i in range(threads)]
+        split_list = [task_list[data_array_limit * i:data_array_limit * (i + 1)] for i in range(threads)]
     return split_list
 
 
@@ -77,3 +92,22 @@ def is_correct_word(word: str) -> bool:
         remaining_word = word.replace("-", "", 1)
         flag = 0 < dash_index < len(word) and remaining_word.isalpha()
     return flag
+
+
+def get_documents(text: List[List[TaggedWord]], keys: List[str]=list()) -> tuple:
+    if not isinstance(text, list) or not isinstance(keys, list) or any((not isinstance(key, str) for key in keys)):
+        return text,
+
+    current_document = []
+    documents = []
+    for sentence in text:
+        contains = [contains_sentence(sentence, key, 4) for key in keys]
+        if any(contains):
+            documents.append(current_document)
+            current_document = [sentence]
+        else:
+            if len(sentence) != 0:
+                current_document.append(sentence)
+    documents.append(current_document)
+
+    return documents

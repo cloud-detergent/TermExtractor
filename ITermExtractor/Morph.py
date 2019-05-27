@@ -1,16 +1,16 @@
-from operator import itemgetter
-import re
-import pymorphy2
-from ITermExtractor.Structures.PartOfSpeech import PartOfSpeech, POSNameConverter
-from ITermExtractor.Structures.Case import Case, CaseNameConverter
-from ITermExtractor.Structures.WordStructures import TaggedWord, Collocation, non_whitespace_separators, Separator
-import helpers
-from typing import List, Tuple  # TODO PEP 484 & type checks
-from pyxdameraulevenshtein import normalized_damerau_levenshtein_distance_ndarray
 import logging
-import deprecated
-import traceback
+import re
+from operator import itemgetter
+from pyxdameraulevenshtein import normalized_damerau_levenshtein_distance_ndarray
+from typing import List, Tuple  # TODO PEP 484 & type checks
+
 import numpy as np
+import pymorphy2
+
+import helpers
+from ITermExtractor.Structures.Case import Case, CaseNameConverter
+from ITermExtractor.Structures.PartOfSpeech import PartOfSpeech, POSNameConverter
+from ITermExtractor.Structures.WordStructures import TaggedWord, Collocation, non_whitespace_separators, Separator
 
 LENGTH_LIMIT_PER_PROCESS = 200
 DIST_THRESHOLD = 0.15
@@ -241,7 +241,9 @@ def is_identical_collocation_q(collocation1: List[TaggedWord], collocation2: Lis
     if not (isinstance(collocation1, list) and isinstance(collocation2, list)):  # List[TaggedWord]
         raise TypeError("Ошибка типов. Необходимы словосочетания упакованные в List[TaggedWord]")
     if len(collocation1) < 1 or len(collocation2) < 1:  # TODO condition
-        raise ValueError("Необходимы словосочетания:\n {0} ({1})\n {2} ({3})".format(collocation1, len(collocation1), collocation2, len(collocation2)))
+        raise ValueError(
+            "Необходимы словосочетания:\n {0} ({1})\n {2} ({3})".format(collocation1, len(collocation1), collocation2,
+                                                                        len(collocation2)))
 
     if collocation1 == collocation2:
         return True
@@ -269,7 +271,8 @@ def is_identical_collocation_q(collocation1: List[TaggedWord], collocation2: Lis
     return is_identical
 
 
-def binary_identity_check(collocation: List[TaggedWord], collocation_list: List[Tuple[int, List[TaggedWord]]]) -> List[Tuple[int, bool]]:  # индекс, True/False
+def binary_identity_check(collocation: List[TaggedWord], collocation_list: List[Tuple[int, List[TaggedWord]]]) -> List[
+    Tuple[int, bool]]:  # индекс, True/False
     """
     Проверяет наличие словосочетания в списке бинарным поиском
     :param collocation: словосочетание
@@ -291,7 +294,7 @@ def binary_identity_check(collocation: List[TaggedWord], collocation_list: List[
         second_result = binary_identity_check(collocation, second_half)
         result = [] + first_result + second_result
         return result
-        #LENGTH_LIMIT_PER_PROCESS
+        # LENGTH_LIMIT_PER_PROCESS
     # [(is_identical_collocation_q(collocation, coll[1]), coll[0], coll[1]) for coll in enumerate(collocation_list)]
 
 
@@ -345,7 +348,8 @@ def in_collocation_list_var(collocation: str, collocation_list: List[str]) -> Tu
     return flag, collocation_list[found_index] if found_index > -1 else None
 
 
-def count_includes(collocation: List[TaggedWord], collocation_list: List[List[TaggedWord]]) -> List[Tuple[int, List[TaggedWord]]]:
+def count_includes(collocation: List[TaggedWord], collocation_list: List[List[TaggedWord]]) -> List[
+    Tuple[int, List[TaggedWord]]]:
     """
     Осуществляет проверку наличия словосочетания с списке, учитывая падеж
     :param collocation: словосочетание
@@ -470,7 +474,8 @@ def get_collocation_normal_form_old(collocations: List[List[TaggedWord]]) -> int
             continue
         main_word_tagged_l = [word for word in collocations[i] if word.word == main_word]
         main_word_tagged = main_word_tagged_l[0] if len(main_word_tagged_l) > 0 else None
-        if main_word_tagged is not None and (main_word_tagged.case == Case.nominative or main_word_tagged.word == main_word_tagged.normalized):
+        if main_word_tagged is not None and (
+                main_word_tagged.case == Case.nominative or main_word_tagged.word == main_word_tagged.normalized):
             index = i
             break
     return index
@@ -498,7 +503,8 @@ def get_biword_coll_normal_form(collocation: List[TaggedWord]) -> str:
         else:
             parse_info = __MorphAnalyzer__.parse(word.word)
             # the_word = list(filter(lambda o: CaseNameConverter.to_name(word.case) == o.tag.case, parse_info))[0]
-            the_word = next(iter(filter(lambda o: CaseNameConverter.to_name(word.case) == o.tag.case, parse_info)), None)
+            the_word = next(iter(filter(lambda o: CaseNameConverter.to_name(word.case) == o.tag.case, parse_info)),
+                            None)
             if the_word is None:
                 print('why? Было передано отпарсенное слово с неверным падежом?! {0}, чр {1}, п. {2}'
                       .format(word.word, word.pos, word.case))
@@ -549,10 +555,11 @@ def replace_main_word(collocation: Collocation, main_word: str) -> Collocation:
             regular_phrase[i] = main_word
             break
     new_coll = ' '.join(regular_phrase)
-    return Collocation(new_coll, collocation.wordcount, 0, collocation.pnormal_form, collocation.llinked, collocation.id)
+    return Collocation(new_coll, collocation.wordcount, 0, collocation.pnormal_form, collocation.llinked,
+                       collocation.id)
 
 
-            # @NotImplemented
+# @NotImplemented
 def get_normal_form(collocation: List[TaggedWord]) -> str:
     if not isinstance(collocation, list):
         raise TypeError("Аргумент должен быть списком слов")
@@ -593,11 +600,12 @@ def make_substrs(collocation: str) -> List[str]:  # TODO а почему арт�
     substrings = []
     for wcount in range(len(words) - 1, 1, -1):
         for j in range(0, len(words) - wcount + 1):
-            substrings.append(' '.join(words[j:j+wcount]))
+            substrings.append(' '.join(words[j:j + wcount]))
     return substrings
 
 
-def get_longer_terms(line: Collocation, longer_grams: List[Collocation], dictionary: List[TaggedWord]) -> List[Collocation]:
+def get_longer_terms(line: Collocation, longer_grams: List[Collocation], dictionary: List[TaggedWord]) -> List[
+    Collocation]:
     """
     Возвращает перечень кандидатов, в которых содержится строка line
     :param line:
@@ -660,5 +668,7 @@ def find_candidate_by_id(collocation_list: List[Collocation], cid: int):
         collocation_with_links = list(filter(lambda x: len(x.llinked) > 0, collocation_list))
         link_integrity_checks = [all(link in collocation_dict for link in p.llinked) for p in collocation_with_links]
         flag = all(link_integrity_checks)
-        logging.debug("----> Фраза по id (#{0}) не найдена, все ли в порядке со ссылками в списке: {1}, а хоть что-то: {2}".format(cid, flag, True in link_integrity_checks))
+        logging.debug(
+            "----> Фраза по id (#{0}) не найдена, все ли в порядке со ссылками в списке: {1}, а хоть что-то: {2}".format(
+                cid, flag, True in link_integrity_checks))
     return result

@@ -11,7 +11,7 @@ from typing import List, Dict, Tuple
 from operator import itemgetter
 from ITermExtractor.Structures.WordStructures import Collocation, TaggedWord, Separator
 from itertools import groupby
-from Tests.linguistic_filter import is_integral
+# from Tests.linguistic_filter import is_integral
 
 LIMIT_PER_PROCESS = 80
 # TODO общие структуры вынести в отдельный модуль
@@ -26,7 +26,6 @@ class LinguisticFilter(object):
 
     _limit = 5; """Магическое значение максимальной длины термина, выраженной в количестве слов"""
 
-    # TODO на каком-то этапе валится целостность по ссылкам. Заменяются?
     def filter_text(self, sentences: List[List[TaggedWord]], is_single_threaded: bool = False) -> List[Collocation]:
         """
         Извлечение терминологических кандидатов из текста, разбитого на предложения
@@ -154,12 +153,23 @@ class AdjNounLinguisticFilter(LinguisticFilter):
         self.pattern = FilterPatternConjuction([token_1, token_2])
 
 
-class AdjNounReducedLinguisticFilter(LinguisticFilter):
-    """Модифицированный вариант фильтра Adj|Noun для метода k-factor"""
+class AdjNounExtendedLinguisticFilter(LinguisticFilter):
     def __init__(self):
-        token_1 = FilterPatternToken(PartOfSpeechStruct([PartOfSpeech.adjective, PartOfSpeech.noun], "|"), 1, 1)
+        token_1a = FilterPatternToken(PartOfSpeechStruct([PartOfSpeech.adjective, PartOfSpeech.noun], "|"), 1, math.inf)
+        token_1b0 = FilterPatternToken(PartOfSpeechStruct([PartOfSpeech.adjective, PartOfSpeech.noun], "|"), 0, math.inf)
+        token_1b1 = FilterPatternToken(PartOfSpeech.preposition, 0, 1)
+        token_1b = FilterPatternConjuction([token_1b0, token_1b1])
+
+        token_1_0 = FilterPatternConjuction([token_1a, token_1b])
+        token_1 = FilterPatternConjuction([token_1_0, token_1b0])
+
         token_2 = FilterPatternToken(PartOfSpeech.noun, 1)
         self.pattern = FilterPatternConjuction([token_1, token_2])
+
+
+class VerbalLinguisticFilter(LinguisticFilter):
+    def __init__(self):
+        self.pattern = FilterPatternConjuction([FilterPatternToken(PartOfSpeech.verb, 1, 1)])
 
 
 class FilterPatternConjuction(object):

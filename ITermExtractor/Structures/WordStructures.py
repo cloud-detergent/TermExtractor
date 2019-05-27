@@ -1,5 +1,6 @@
 from collections import namedtuple
 from copy import deepcopy
+from typing import List
 
 TaggedWord = namedtuple('TaggedWord', ['word', 'pos', 'case', 'normalized'])  # TODO число - ед/мн
 TaggedWord.__doc__ = "Размеченное слово"
@@ -134,3 +135,18 @@ class Collocation(dict):
         for k, v in self.items():
             setattr(result, k, deepcopy(v, memodict))
         return result
+
+
+def contains_sentence(sentence: List[TaggedWord or Separator], word: str, word_constraint: int=0):
+    if not isinstance(sentence, list) or not any((isinstance(p, TaggedWord) or isinstance(p, Separator) for p in sentence)):
+        return False
+    if not isinstance(word_constraint, int) or word_constraint < 0:
+        word_constraint = 0
+
+    flag = False
+    words = list(filter(lambda x: isinstance(x, TaggedWord), sentence))
+    word_constraint = len(words) if word_constraint == 0 or word_constraint > len(words) else word_constraint
+    for i in range(word_constraint):
+        flag = flag or words[i].word.lower() == word.lower() \
+               or words[i].normalized.lower() == word.lower()
+    return flag

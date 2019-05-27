@@ -4,9 +4,11 @@ from operator import itemgetter
 from ITermExtractor.Morph import find_candidate_by_id
 from itertools import groupby
 import logging
+import multiprocessing
 
 KFACTOR = 0.7
 THRESHOLD = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+# TODO use multiprocessing.cpu_count()
 
 
 def is_beyond_threshold(phrase: Collocation) -> bool:

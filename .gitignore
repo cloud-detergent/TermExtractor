@@ -1,0 +1,14 @@
+\.idea/
+__pycache__/
+result/
+#data/
+tmp/
+
+src\.txt
+data/содержания*\.txt
+
+data/journal\.*
+
+data/обработанное за полчаса 15 ноя\.txt
+
+data/input_text\.txt

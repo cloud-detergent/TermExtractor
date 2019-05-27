@@ -1,26 +1,37 @@
-from ITermExtractor.linguistic_filter import (NounPlusLinguisticFilter, AdjNounLinguisticFilter, AdjNounReducedLinguisticFilter)
+import datetime
+import logging
+import os
+import pickle
+from operator import itemgetter
+from typing import List, Tuple
+
+import ITermExtractor.stat.cvalue as cvalue
+import ITermExtractor.stat.glossex as glossex
+import ITermExtractor.stat.kfactor as kfactor
+import Runner
+import logger_settings
+from ITermExtractor.Structures.WordStructures import TaggedWord
 from ITermExtractor.linguistic_filter import Collocation
+from ITermExtractor.linguistic_filter import (NounPlusLinguisticFilter, AdjNounLinguisticFilter)
 from ITermExtractor.stoplist import StopList
 from TextImporter import (DefaultTextImporter, PlainTextImporter, PdfHtmlTextImporter, FileArrayImporter)
-from typing import List, Tuple
-from ITermExtractor.Structures.WordStructures import TaggedWord
-from operator import itemgetter
-import Runner
-import datetime
-import os
-import logger_settings
-import logging
-import ITermExtractor.stat.cvalue_revisited as cvalue
-import ITermExtractor.stat.kfactor_revisited as kfactor
-import pickle
-from Tests.linguistic_filter import is_integral
+from helpers import get_documents
 
 
-def save_text_raw_terms(filename: str, input_list: List[Collocation]):
+def save_text_raw_terms(filename: str, input_list: List[Collocation], is_short_version: bool = False):
     with open(file=filename, mode="wt", encoding="utf-8") as f:
         data = []
+
         for line in input_list:
-            data.append("{0} | {1} | {2} | {3} | {4}{5}".format(line.collocation, line.freq, line.id, line.pnormal_form, '-'.join([str(l) for l in line.llinked]), os.linesep))
+            if is_short_version:
+                info_line = "{0} | {1}{2}".format(line.collocation, line.freq, os.linesep)
+            else:
+                term_links = '-'.join([str(l) for l in line.llinked])  # TODO fix crash
+                info_line = "{0} | {1} | {2} | {3} | {4}{5}".format(line.collocation, line.freq, line.id,
+                                                                    line.pnormal_form,
+                                                                    term_links, os.linesep)
+
+            data.append(info_line)
         f.writelines(data)
 
 
@@ -48,6 +59,11 @@ def save_text_stat(filename: str, input_list: List[cvalue.params]):
                 data.append(pattern.format(line.name, round(line.cvalue, 3), os.linesep))
             elif isinstance(line, Collocation):
                 data.append(pattern.format(line.collocation, round(line.freq, 3), os.linesep))
+            elif isinstance(line, glossex.params):
+                val = 0.2 * line.termhood + 0.8 * line.unithood
+                data.append("{0} (=) t={1}, u={2} val={3}{4}".format(line.name, round(line.termhood, 3),
+                                                                     round(line.unithood, 3), round(val, 3),
+                                                                     os.linesep))
         f.writelines(data)
 
 
@@ -79,6 +95,7 @@ def open_tag_data(filename: str) -> List[TaggedWord]:
         logger.warning("Файл с размеченными словами пуст")
     return data
 
+
 __time_stamps__ = []
 
 
@@ -89,7 +106,7 @@ def track_time(desc: str = ""):
 def difference(desc: str = ""):
     stamps = [stamp[1] for stamp in __time_stamps__ if stamp[0] == desc]
     if len(stamps) >= 2:
-        diffs = [str(stamps[i+1] - stamps[i]) for i in range(len(stamps) - 1)]
+        diffs = [str(stamps[i + 1] - stamps[i]) for i in range(len(stamps) - 1)]
     else:
         diffs = []
     return diffs
@@ -113,13 +130,14 @@ def input_menu(text: str, choices: List[str], is_menu_entry: bool = True, show_o
 
     return choice
 
+
 # TODO сравнить результаты на 3k
 if __name__ == "__main__":
     USE_FILTER_1 = True
     USE_FILTER_2 = True
     RERUN_FILTER_1 = True
     RERUN_FILTER_2 = True
-    USE_CVALUE_1 = USE_CVALUE_2 = USE_KFACTOR_1 = USE_KFACTOR_2 = False
+    USE_CVALUE_1 = USE_CVALUE_2 = USE_KFACTOR_1 = USE_KFACTOR_2 = USE_GLOSSEX_1 = USE_GLOSSEX_2 = False
 
     logger_settings.setup()
     logger = logging.getLogger()
@@ -135,7 +153,8 @@ if __name__ == "__main__":
         RERUN_FILTER_1 = choice_rerun_filter
         RERUN_FILTER_2 = choice_rerun_filter
     else:
-        choice_source = input_menu("Выберите источник", ["Стандартный текст", "Текстовый файл", "Pdf-документ", "Список файлов"])
+        choice_source = input_menu("Выберите источник",
+                                   ["Стандартный текст", "Текстовый файл", "Pdf-документ", "Список файлов"])
         if choice_source != 1:
             choice_source_filename = input_menu("Введите имя файла (0-использовать стандартный файл)", [], False)
             choice_source_std = choice_source_filename == '0'
@@ -146,7 +165,7 @@ if __name__ == "__main__":
             logger.info("Выбран тестовый модуль")
             text_importer = DefaultTextImporter()
         elif choice_source == 2:
-            if choice_source_std:
+            if choice_source_std or choice_source_filename == '':
                 test_file = os.path.join('data', 'doc-2.txt')
             else:
                 test_file = os.path.join('data', choice_source_filename)
@@ -162,7 +181,8 @@ if __name__ == "__main__":
             start_index = 600  # int(input_menu("Стартовый индекс", [], False))
 
             logger.info("Выбран pdf документ '{0}'".format(test_file))
-            text_importer = PdfHtmlTextImporter(filename=test_file, word_limit=word_limit, start_index=start_index)  # sys.argv[1]
+            text_importer = PdfHtmlTextImporter(filename=test_file, word_limit=word_limit,
+                                                start_index=start_index)  # sys.argv[1]
             # TODO есть предложения, части которых разделены '\n'. части обрабатываются как отдельные предложения?
         elif choice_source == 4:
             if choice_source_std:
@@ -174,7 +194,8 @@ if __name__ == "__main__":
 
     choice_stoplist = input_menu("Использовать стоп-лист?", ["Да", "Нет"]) == 1
 
-    options = ['c-value с Noun+ фильтром', 'c-value с Adj|Noun фильтром', 'kfactor Noun+', 'kfactor Adj|Noun', 'закончить выбор']
+    options = ['c-value с Noun+ фильтром', 'c-value с Adj|Noun фильтром', 'kfactor Noun+', 'kfactor Adj|Noun',
+               'GlossEx Noun+', 'GlossEx Adj|Noun', 'закончить выбор']
     choice_algorithms = -1
     while choice_algorithms != len(options):
         choice_algorithms = input_menu("Выбор алгоритмов", options, show_options=choice_algorithms == -1)
@@ -182,12 +203,17 @@ if __name__ == "__main__":
         USE_CVALUE_2 = USE_CVALUE_2 or choice_algorithms == 2
         USE_KFACTOR_1 = USE_KFACTOR_1 or choice_algorithms == 3
         USE_KFACTOR_2 = USE_KFACTOR_2 or choice_algorithms == 4
+        USE_GLOSSEX_1 = USE_GLOSSEX_1 or choice_algorithms == 5
+        USE_GLOSSEX_2 = USE_GLOSSEX_2 or choice_algorithms == 6
 
-        USE_FILTER_1 = USE_CVALUE_1 or USE_KFACTOR_1
-        USE_FILTER_2 = USE_CVALUE_2 or USE_KFACTOR_2
+        USE_FILTER_1 = USE_CVALUE_1 or USE_KFACTOR_1 or USE_GLOSSEX_1
+        USE_FILTER_2 = USE_CVALUE_2 or USE_KFACTOR_2 or USE_GLOSSEX_2
     print("Выбор осуществлен")
+    documents = []
+    tagged_documents = []
     if not choice_tag_cache_read:
         input_text = text_importer.get_text()
+        # documents = text_importer.get_documents(input_text)
 
     track_time()
 
@@ -197,20 +223,26 @@ if __name__ == "__main__":
     filtered_terms1 = []
     filtered_terms2 = []
 
+    document_types = ['Указания', 'Инструкция', 'Инструктивные', 'Выводы', 'Приказ']
+
     if choice_tag_cache_read:
         tagged_sentence_list = open_tag_data(os.path.join('result', 'tags'))
+        tagged_documents = get_documents(tagged_sentence_list, document_types)
         logger.info("Теги взяты из файла, в котором {0}"
                     .format("пусто" if len(tagged_sentence_list) == 0 else "есть данные"))
-        terms1 = open_raw_terms(os.path.join('result','inter-noun_plus.txt'))
-        terms2 = open_raw_terms(os.path.join('result','inter-adj_noun.txt'))
+        terms1 = open_raw_terms(os.path.join('result', 'inter-noun_plus.txt'))
+        terms2 = open_raw_terms(os.path.join('result', 'inter-adj_noun.txt'))
 
     if not choice_tag_cache_read or len(tagged_sentence_list) == 0:
         tagged_sentence_list = Runner.parse_text(input_text=input_text)
+        # tagged_documents = [Runner.parse_text(input_text=document) for document in documents]
+        tagged_documents = get_documents(tagged_sentence_list, document_types)
+        # подсчет количества вхождений
         logger.debug("Текст обработан, количество слов с тегами {0}".format(len(tagged_sentence_list)))
         if choice_tag_cache_write:
             save_tag_data(os.path.join('result', 'tags'), tagged_sentence_list)
-            # with open(os.path.join('data', 'input_text.txt'), mode="wt") as f:
-            #    f.write(input_text)
+            with open(os.path.join('data', 'input_text.txt'), mode="wt") as f:
+                f.write(input_text)
             logger.info("Теги сохранены в файл")
 
     logger.debug("Начало извлечения списка терминов")
@@ -241,9 +273,11 @@ if __name__ == "__main__":
 
     logger.info("Запись промежуточных результатов в файлы")
     if USE_FILTER_1 and RERUN_FILTER_1:
-        save_text_raw_terms(os.path.join('result', 'inter-noun_plus.txt'), sorted(filtered_terms1, key=itemgetter('wordcount'), reverse=True))
+        save_text_raw_terms(os.path.join('result', 'inter-noun_plus.txt'),
+                            sorted(filtered_terms1, key=itemgetter('wordcount'), reverse=True))
     if USE_FILTER_2 and RERUN_FILTER_2:
-        save_text_raw_terms(os.path.join('result', 'inter-adj_noun.txt'), sorted(filtered_terms2, key=itemgetter('wordcount'), reverse=True))
+        save_text_raw_terms(os.path.join('result', 'inter-adj_noun.txt'),
+                            sorted(filtered_terms2, key=itemgetter('wordcount'), reverse=True))
     logger.info("Данные записаны")
 
     dictionary = [word for sentence in tagged_sentence_list for word in sentence]
@@ -280,10 +314,36 @@ if __name__ == "__main__":
         save_text_stat(os.path.join('result', 'kfactor_adj_noun.txt'), kfactor_res_2)
     track_time("kfactor")
 
+    logger.info("Подсчитываем glossex")
+    track_time("glossex")
+    if USE_GLOSSEX_1:
+        logger.info("Переход к подчету, фильтр 1, к обработке {0}".format(len(filtered_terms1)))
+        # glossex_res_1 = glossex.threading_calculate(filtered_terms1, tagged_documents, multiprocessing.cpu_count())
+        glossex_res_1 = glossex.calculate(filtered_terms1, tagged_documents)
+        save_text_stat(os.path.join('result', 'glossex_noun_plus_raw.txt'), glossex_res_1)
+
+        glossex_res_1_clean = list(
+            map(lambda x: cvalue.params(name=x.name, cvalue=0.2 * x.termhood + 0.8 * x.unithood), glossex_res_1))
+        glossex_res_1_clean = sorted(glossex_res_1_clean, key=itemgetter(1), reverse=True)
+        save_text_stat(os.path.join('result', 'glossex_noun_plus.txt'), glossex_res_1_clean)
+
+    if USE_GLOSSEX_2:
+        logger.info("Переход к подчету, фильтр 1, к обработке {0}".format(len(filtered_terms2)))
+        # glossex_res_2 = glossex.threading_calculate(filtered_terms2, tagged_documents, multiprocessing.cpu_count())
+        glossex_res_2 = glossex.calculate(filtered_terms2, tagged_documents)
+        save_text_stat(os.path.join('result', 'glossex_adj_noun_raw.txt'), glossex_res_2)
+
+        glossex_res_2_clean = list(
+            map(lambda x: cvalue.params(name=x.name, cvalue=0.2 * x.termhood + 0.8 * x.unithood), glossex_res_2))
+        glossex_res_2_clean = sorted(glossex_res_2_clean, key=itemgetter(1), reverse=True)
+        save_text_stat(os.path.join('result', 'glossex_adj_noun.txt'), glossex_res_2_clean)
+    track_time("glossex")
+
     track_time()
     logger.info("Алгоритм работал {0} c.".format(difference()))
     logger.info("Из которых cvalue работал {0} c.".format(difference("cvalue")))
     logger.info("Из которых kfactor работал {0} c.".format(difference("kfactor")))
+    logger.info("Из которых glossex работал {0} c.".format(difference("glossex")))
     logger.info("Конец")
     print("Конец обработки данных")
 
