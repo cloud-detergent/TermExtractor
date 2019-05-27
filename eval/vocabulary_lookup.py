@@ -1,10 +1,11 @@
 from typing import List, Dict, Tuple, Any
 from main import open_text_stat, save_text_stat
-import ITermExtractor.Morph as m
-import ITermExtractor.stat.cvalue_revisited as cvalue
+from operator import itemgetter
 from ITermExtractor.Structures.WordStructures import Separator, TaggedWord
+from itertools import groupby
 import os
 import random
+import ITermExtractor.Morph as m
 
 default_voc = '../data/ru_militaryterms_1_0.dsl'
 
@@ -121,12 +122,27 @@ def calc_fuzzy(extracted_terms: List[Tuple[str, float]], prepared_sample: Dict[s
     return final_list_similar
 
 
-def run_comparison(extracted_terms: List[Tuple[str, float]], prepared_sample: Dict[str, str] = dict(), caption = str()):
+def calc_full_fuzzy_array(extracted_terms: List[Tuple[str, float]], prepared_sample: Dict[str, str]) -> List[float]:
+    """
+    подсчет нечеткой оценки на множестве терминов
+    :param extracted_terms: извлеченные термины
+    :param prepared_sample: подготовленный образец - список терминов из словаря
+    :return:
+    """
+    normalized_voc_terms = prepared_sample.keys()
+    similarity_list = list()
+    for t in extracted_terms:
+        similar_terms = get_similar(t[0], normalized_voc_terms)
+        similarity_list.append(max(similar_terms, key=itemgetter(1))[1] if len(similar_terms) > 0 else 0)
+    return similarity_list
+
+
+def run_comparison(extracted_terms: List[Tuple[str, float]], prepared_sample: Dict[str, str] = dict(), caption = str()) -> Tuple[str, Dict[str, list]]:
     """
     Runs comparison functions
     :param extracted_terms: term extraction method results
     :param prepared_sample: sample from a vocabulary
-    :return: nothing
+    :return: detailed results combined into categories
     """
     if prepared_sample == dict():
         data = load_vocabulary()
@@ -152,8 +168,19 @@ def run_comparison(extracted_terms: List[Tuple[str, float]], prepared_sample: Di
     print('\t\tтермины словаря вложенные в извлеченные : ', len(in_list_precise_sample_in))
     print('\t\tизвлеченные вложенные в термины словаря : ', len(in_list_precise_extracted_in))
     print('\t\tЧисло совпавших нечетко: ', len(in_list_fuzzy))
-    print('\t\tЧисло извлеченных терминов, не в списке четкой формальной оценки: ', len(exclude_list_precise))
-    print('\t\tЧисло извлеченных терминов, не в списке нечеткой формальной оценки: ', len(exclude_list_fuzzy))
+
+    # for key, value_sitter in groupby(in_list_fuzzy, key=itemgetter('wordcount')):
+    # print('\t\tЧисло извлеченных терминов, не в списке четкой формальной оценки: ', len(exclude_list_precise))
+    # print('\t\tЧисло извлеченных терминов, не в списке нечеткой формальной оценки: ', len(exclude_list_fuzzy))
+
+    # TODO должны ли входить четко совпавшие со словарными термины из нечеткого списка?
+    result = (caption, {
+        'voc': in_list_precise,
+        'voc_nested': in_list_precise_sample_in,
+        'extracted_nested': in_list_precise_extracted_in,
+        'fuzzy': in_list_fuzzy
+    })
+    return result
 
 
 def calc_similarity(str_1: str, str_2: str) -> float:
@@ -180,7 +207,7 @@ def has_similar(str_1: str, str_list: List[str]) -> bool:
     return result
 
 
-def get_similar(str_1: str, str_list: List[str]) -> bool:
+def get_similar(str_1: str, str_list: List[str]) -> List[Tuple[str, float]]:
     similar_list = [(s, calc_similarity(str_1, s)) for s in str_list if calc_similarity(str_1, s) >= 0.5]
     return similar_list
 
@@ -202,16 +229,22 @@ def select_random_excerpt(input_list: List[Tuple[str, Any]], req_numbers_by_leng
         excerpt += bit
     return excerpt
 
+
 if __name__ == "__main__":
     file_1 = os.path.join('..', 'result', 'cvalue_noun_plus.txt')
     file_2 = os.path.join('..', 'result', 'cvalue_adj_noun.txt')
     file_3 = os.path.join('..', 'result', 'kfactor_noun_plus.txt')
     file_4 = os.path.join('..', 'result', 'kfactor_adj_noun.txt')
 
+    file_5 = os.path.join('..', 'result', 'glossex_noun_plus.txt')
+    file_6 = os.path.join('..', 'result', 'glossex_adj_noun.txt')
+
     cvalue_1 = open_text_stat(file_1)
     cvalue_2 = open_text_stat(file_2)
     kfactor_1 = open_text_stat(file_3)
     kfactor_2 = open_text_stat(file_4)
+    glossex_1 = open_text_stat(file_5)
+    glossex_2 = open_text_stat(file_6)
 
     prepared_sample = dict()
 
@@ -222,10 +255,15 @@ if __name__ == "__main__":
     kfactor_1_short = select_random_excerpt(kfactor_1, {1: 20, 2: 20, 3: 20, 4: 20, 5: 20})
     kfactor_2_short = select_random_excerpt(kfactor_2, {1: 20, 2: 20, 3: 20, 4: 20, 5: 20})
 
+    glossex_1_short = [t for i, t in enumerate(glossex_1) if i < 100]
+    glossex_2_short = [t for i, t in enumerate(glossex_2) if i < 100]
+
     run_comparison(cvalue_1_short, prepared_sample, 'C-value short 1')
     run_comparison(cvalue_2_short, prepared_sample, 'C-value short 2')
     run_comparison(kfactor_1_short, prepared_sample, 'kFactor short 1')
     run_comparison(kfactor_2_short, prepared_sample, 'kFactor short 2')
+    run_comparison(glossex_1_short, prepared_sample, 'GlossEx short 1')
+    run_comparison(glossex_2_short, prepared_sample, 'GlossEx short 2')
     # </editor-fold>
 
     # <editor-fold desc="Средний список">
@@ -233,11 +271,15 @@ if __name__ == "__main__":
     cvalue_2_middle = [t for t in cvalue_2 if t[1] > 1]
     kfactor_1_middle = [t for t in kfactor_1 if t[1] > 1]
     kfactor_2_middle = [t for t in kfactor_2 if t[1] > 1]
+    glossex_1_middle = [t for t in glossex_1 if t[1] > 1]
+    glossex_2_middle = [t for t in glossex_2 if t[1] > 1]
 
     run_comparison(cvalue_1_middle, prepared_sample, 'C-value middle 1')
     run_comparison(cvalue_2_middle, prepared_sample, 'C-value middle 2')
     run_comparison(kfactor_1_middle, prepared_sample, 'kFactor middle 1')
     run_comparison(kfactor_2_middle, prepared_sample, 'kFactor middle 2')
+    run_comparison(glossex_1_middle, prepared_sample, 'GlossEx middle 1')
+    run_comparison(glossex_2_middle, prepared_sample, 'GlossEx middle 2')
     # </editor-fold>
 
     # <editor-fold desc="Длинный список">
@@ -245,6 +287,8 @@ if __name__ == "__main__":
     run_comparison(cvalue_2, prepared_sample, 'C-value 2')
     run_comparison(kfactor_1, prepared_sample, 'kFactor 1')
     run_comparison(kfactor_2, prepared_sample, 'kFactor 2')
+    run_comparison(glossex_1, prepared_sample, 'GlossEx 1')
+    run_comparison(glossex_2, prepared_sample, 'GlossEx 2')
     # </editor-fold>
     """
     # <editor-fold desc="Короткий список">
