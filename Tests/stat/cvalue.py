@@ -1,5 +1,5 @@
 from ITermExtractor.linguistic_filter import NounPlusLinguisticFilter
-import ITermExtractor.stat.cvalue_revisited as cvalue
+import ITermExtractor.stat.cvalue as cvalue
 import Runner
 import unittest
 

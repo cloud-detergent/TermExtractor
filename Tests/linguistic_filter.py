@@ -7,6 +7,8 @@ import Runner
 import os
 
 
+# TODO test extended filter
+
 class TestLinguisticFilter(unittest.TestCase):
     def test_filter_sentence(self):
         filter1 = NounPlusLinguisticFilter()
