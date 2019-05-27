@@ -23,7 +23,7 @@ if __name__ == "__main__":
         text_importer = DefaultTextImporter()
     elif choice_source == 2:
         if choice_source_std:
-            test_file = os.path.join('data', 'doc-2.txt')
+            test_file = os.path.join('data', 'default-doc.txt')
         else:
             test_file = os.path.join('data', choice_source_filename)
         logger.info("Выбран текстовый файл '{0}'".format(test_file))
